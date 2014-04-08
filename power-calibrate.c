@@ -1057,7 +1057,7 @@ static const char *coefficient_r2(double r2)
  */
 static int monitor_cpu_load(const int start_delay, const int max_readings)
 {
-	int cpus, i;
+	int cpus, i, n = 0;
 	tuple_t	 tuples[num_cpus * MAX_CPU_LOAD];
 	tuple_t	*tuple = tuples;
 	double gradient, intercept, r2;
@@ -1081,10 +1081,11 @@ static int monitor_cpu_load(const int start_delay, const int max_readings)
 			if (ret < 0)
 				return -1;
 			tuple++;
+			n++;
 			average_voltage += voltage;
 		}
 	}
-	average_voltage /= MAX_CPU_LOAD;
+	average_voltage /= n;
 
 	calc_trend(tuples, num_cpus * MAX_CPU_LOAD, &gradient, &intercept, &r2);
 	printf("\n");
@@ -1104,7 +1105,7 @@ static int monitor_cpu_load(const int start_delay, const int max_readings)
  */
 static int monitor_ctxt_load(const int start_delay, const int max_readings)
 {
-	int i;
+	int i, n = 0;
 	tuple_t	 tuples[CTXT_SAMPLES];
 	tuple_t	*tuple = tuples;
 	double gradient, intercept, r2;
@@ -1126,15 +1127,16 @@ static int monitor_ctxt_load(const int start_delay, const int max_readings)
 		if (ret < 0)
 			return -1;
 		tuple++;
+		n++;
 		average_voltage += voltage;
 	}
-	average_voltage /= MAX_CPU_LOAD;
+	average_voltage /= n;
 
 	calc_trend(tuples, CTXT_SAMPLES, &gradient, &intercept, &r2);
 	printf("\n");
 	printf("Power (Watts) = (Context Switches * %f) + %f\n",
 		gradient, intercept);
-	printf("1 Context Switch is about %f Watts (about %f mA)\n", gradient, 1000 * gradient / average_voltage);
+	printf("1 Context Switch is about %f Watts (about %f mA)\n", gradient, 1000.0 * gradient / average_voltage);
 	printf("Coefficient of determination R^2 = %f (%s)\n", r2,
 		coefficient_r2(r2));
 	printf("\n");
