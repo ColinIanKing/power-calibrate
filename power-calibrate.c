@@ -1134,7 +1134,7 @@ static int monitor_ctxt_load(const int start_delay, const int max_readings)
 	printf("\n");
 	printf("Power (Watts) = (Context Switches * %f) + %f\n",
 		gradient, intercept);
-	printf("1 Context Switch is about %f Watts (about %f mA)\n", 1000.0 * gradient, gradient / average_voltage);
+	printf("1 Context Switch is about %f Watts (about %f mA)\n", gradient, 1000 * gradient / average_voltage);
 	printf("Coefficient of determination R^2 = %f (%s)\n", r2,
 		coefficient_r2(r2));
 	printf("\n");
