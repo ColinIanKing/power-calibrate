@@ -1,3 +1,11 @@
+power-calibrate (0.01.02) trusty; urgency=low
+
+  * Makefile: bump version
+  * Fix incorrect current calculation, which is off by a multiple of the CPUs
+  * Fix up stupid multiplication of 1000 for Ctxt Switches
+
+ -- Colin King <colin.king@canonical.com>  Tue, 8 Apr 2014 21:27:00 +0100
+
 power-calibrate (0.01.01) trusty; urgency=low
 
   * Makefile: bump version
