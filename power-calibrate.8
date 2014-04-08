@@ -1,0 +1,60 @@
+.\"                                      Hey, EMACS: -*- nroff -*-
+.\" First parameter, NAME, should be all caps
+.\" Second parameter, SECTION, should be 1-8, maybe w/ subsection
+.\" other parameters are allowed: see man(7), man(1)
+.TH POWER-CALIBRATE 8 "8 April, 2014"
+.\" Please adjust this date whenever revising the manpage.
+.\"
+.\" Some roff macros, for reference:
+.\" .nh        disable hyphenation
+.\" .hy        enable hyphenation
+.\" .ad l      left justify
+.\" .ad b      justify to both left and right margins
+.\" .nf        disable filling
+.\" .fi        enable filling
+.\" .br        insert line break
+.\" .sp <n>    insert n+1 empty lines
+.\" for manpage-specific macros, see man(7)
+.SH NAME
+power-calibrate \- a tool to calibrate power consumption.
+.br
+
+.SH SYNOPSIS
+.B power-calibrate
+.RI [ \-c ]
+.RI [ \-C ]
+.RI [ \-d " secs]
+.RI [ \-h ]
+.RI [ \-n " cpus]
+.br
+
+.SH DESCRIPTION
+Power-calibrate calibrates the power consumption of a mobile device that has a battery power source.  It will attempt to calculate the power usage of 1% of CPU utiltisation and 1 context switch.  Power-calibrate can only be run on a 
+battery powered system to determine power consumption.
+
+.SH OPTIONS
+power-calibrate options are as follow:
+.TP
+.B \-c
+calibrate CPU power usage. This will run through various CPU utilisation levels across the CPUs on the device and then compute the amount of power consumed for just 1% of CPU utilisation.
+.TP
+.B \-C
+calibrate context switch power usage. This will generate various levels of wakeup events and then compute the amount of power consumed for just 1 context switch. Note that this is not very accurate as this is subject to low correlation between context switches and the lower power consumption of context switches.
+.TP
+.B \-d
+specify the delay in seconds from starting a new test configuration and before starting the sampling. The default is 60 seconds, which is normally enough time to allow the battery statistics to settle down during the current test.
+.TP
+.B \-h
+show help.
+.TP
+.B \-n
+specify the number of CPUs on the device.  By default, the number of CPUs is determined automatically, but this option allows one to override this.
+.RE
+.SH SEE ALSO
+.BR powerstat (8), 
+.BR eventstat (8)
+.SH AUTHOR
+power-calibrate was written by Colin King <colin.king@canonical.com>
+.PP
+This manual page was written by Colin King <colin.king@canonical.com>,
+for the Ubuntu project (but may be used by others).

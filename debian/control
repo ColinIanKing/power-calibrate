@@ -1,0 +1,17 @@
+Source: power-calibrate
+Section: admin
+Priority: optional
+Maintainer: Colin King <colin.king@canonical.com>
+Standards-Version: 3.9.5
+Build-Depends: debhelper (>= 7)
+Homepage: http://kernel.ubuntu.com/~cking/power-calibrate
+
+Package: power-calibrate
+Architecture: linux-any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: laptop power calibration tool
+ Power-calibrate calibrates the power consumption of a mobile
+ device that has a battery power source.  It will attempt to
+ calculate the power usage of 1% of CPU utiltisation and
+ 1 context switch.
+
