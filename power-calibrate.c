@@ -47,9 +47,7 @@
 #define APP_NAME		"power-calibrate"
 #define MIN_RUN_DURATION	(120)		/* We recommend a run of 2 minute pers sample */
 #define SAMPLE_DELAY		(1)		/* Delay between samples in seconds */
-#define ROLLING_AVERAGE_SECS	(120)		/* 2 minute rolling average for power usage calculation */
-#define MAX_MEASUREMENTS 	(ROLLING_AVERAGE_SECS + 10)
-#define START_DELAY		(10)		/* Delay to wait before sampling */
+#define START_DELAY		(15)		/* Delay to wait before sampling */
 #define	RATE_ZERO_LIMIT		(0.001)		/* Less than this we call the power rate zero */
 #define	CTXT_SAMPLES		(20)
 #define MAX_CPU_LOAD		(10)
@@ -58,7 +56,6 @@
 
 #define OPT_CPU_LOAD		(0x00000001)
 #define OPT_CTXT_LOAD		(0x00000002)
-
 
 #define CPU_USER		(0)
 #define CPU_NICE		(1)
@@ -559,69 +556,6 @@ static void stats_average_stddev_min_max(
 }
 
 /*
- *  calc_rolling_average()
- *	calculate power by using rolling average
- *
- *  Battery is less helpful, we need to figure the power rate by looking
- *  back in time, measuring capacity drop and figuring out the rate from
- *  this.  We keep track of the rate over a sliding window of
- *  ROLLING_AVERAGE_SECS seconds.
- */
-static void calc_rolling_average(
-	double total_capacity,
-	double *const power_now,
-	double *const voltage_now,
-	double *const current_now,
-	bool *const inaccurate)
-{
-	static int index = 0;
-	time_t time_now, dt;
-	static measurement_t measurements[MAX_MEASUREMENTS];
-	int i, j;
-
-	time_now = time(NULL);
-	measurements[index].value = total_capacity;
-	measurements[index].when  = time_now;
-	index = (index + 1) % MAX_MEASUREMENTS;
-	*power_now = 0.0;
-
-	(void)voltage_now;
-	(void)current_now;
-
-	/*
-	 * Scan back in time for a sample that's > ROLLING_AVERAGE_SECS
-	 * seconds away and calculate power consumption based on this
-	 * value and interval
-	 */
-	for (j = index, i = 0; i < MAX_MEASUREMENTS; i++) {
-		j--;
-		if (j < 0)
-			j += MAX_MEASUREMENTS;
-
-		if (measurements[j].when) {
-			double dw = measurements[j].value - total_capacity;
-			dt = time_now - measurements[j].when;
-			*power_now = 3600.0 * dw / dt;
-
-			if (time_now - measurements[j].when > ROLLING_AVERAGE_SECS) {
-				*inaccurate = false;
-				break;
-			}
-		}
-	}
-
-	/*
-	 *  We either have found a good measurement, or an estimate at this point, but
-	 *  is it valid?
-	 */
-	if (*power_now < 0.0) {
-		*power_now = 0.0;
-		*inaccurate = true;
-	}
-}
-
-
-/*
  *  power_rate_get_sys_fs()
  *	get power discharge rate from battery via /sys interface
  */
@@ -743,9 +677,13 @@ static int power_rate_get_sys_fs(
 		return 0;
 	}
 
-	/*  Rate not known, so calculate it from historical data, sigh */
-	calc_rolling_average(total_capacity, power_now, voltage_now, current_now, inaccurate);
-	return 0;
+	/*
+	 *  Rate not known, battery is less than useful.  We could
+	 *  calculate it from delta in charge, but that is not accurate
+	 *  for this kind of use case, so error out instead.
+	 */
+	fprintf(stderr, "The battery just provided charge data which is not accurate enough.\n");
+	return -1;
 }
 
 /*
@@ -879,9 +817,13 @@ static int power_rate_get_proc_acpi(
 		return 0;
 	}
 
-	/*  Rate not known, so calculate it from historical data, sigh */
-	calc_rolling_average(total_capacity, power_now, voltage_now, current_now, inaccurate);
-	return 0;
+	/*
+	 *  Rate not known, battery is less than useful.  We could
+	 *  calculate it from delta in charge, but that is not accurate
+	 *  for this kind of use case, so error out instead.
+	 */
+	fprintf(stderr, "The battery just provided charge data which is not accurate enough.\n");
+	return -1;
 }
 
 /*
