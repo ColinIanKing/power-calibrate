@@ -100,6 +100,7 @@ typedef struct {
 	bool	inaccurate[MAX_VALUES];
 } stats_t;
 
+/* x,y data pair, for trend analysis */
 typedef struct {
 	double 	x;
 	double	y;
@@ -107,11 +108,10 @@ typedef struct {
 
 static int sample_delay   = SAMPLE_DELAY;	/* time between each sample in secs */
 static volatile int stop_recv;			/* sighandler stop flag */
-static int num_cpus;
-static int opt_flags;
+static int num_cpus;				/* number of CPUs */
+static int opt_flags;				/* command options */
 
 typedef void (*func)(uint64_t param);
-
 
 #if defined (__linux__)
 /* Set process name, we don't care if it fails */
@@ -857,6 +857,10 @@ static int power_rate_get(
 	return -1;
 }
 
+/*
+ *  not_discharging()
+ *	returns true if battery is not discharging
+ */
 static inline bool not_discharging(void)
 {
 	double power, voltage, current;
@@ -1010,11 +1014,20 @@ static void calc_trend(tuple_t *tuples, int n, double *gradient, double *interce
 		sum_y2 += (tuples[i].y * tuples[i].y);
 	}
 
+	/*
+	 * Coefficient of determination R^2, 
+	 * http://mathbits.com/MathBits/TISection/Statistics2/correlation.htm
+	 */
 	r  = (((double)n * sum_xy) - (sum_x * sum_y)) /
 	      (sqrt(((double)n * sum_x2) - (sum_x * sum_x)) * 
 	       sqrt(((double)n * sum_y2) - (sum_y * sum_y)));
 	*r2 = r * r;
 
+	/*
+	 *  Regression Equation(y) = a + bx
+         *  Slope = (NΣXY - (ΣX)(ΣY)) / (NΣX2 - (ΣX)2)
+ 	 *  Intercept = (ΣY - b(ΣX)) / N 
+	 */
 	a *= (double)n;
 	b = sum_x * sum_y;
 	c = sum_x2 * (double)n;
@@ -1092,7 +1105,6 @@ static void dump_json_misc(FILE *fp)
 	time_t now;
 	struct tm tm;
 	struct utsname buf;
-
 
 	time(&now);
 	localtime_r(&now, &tm);
