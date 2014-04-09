@@ -1284,17 +1284,7 @@ int main(int argc, char * const argv[])
 
 
 	run_duration = MIN_RUN_DURATION + START_DELAY - start_delay;
-
-	if (optind < argc) {
-		max_readings = atoi(argv[optind++]);
-		if ((max_readings * sample_delay) < run_duration) {
-			fprintf(stderr, "Number of readings should be at least %d\n",
-				run_duration / sample_delay);
-			goto out;
-		}
-	} else {
-		max_readings = run_duration / sample_delay;
-	}
+	max_readings = run_duration / sample_delay;
 
 	if (not_discharging())
 		goto out;
