@@ -1303,10 +1303,8 @@ out:
 
 		fprintf(fp, "  }\n}\n");
 		fclose(fp);
-		/*
 		if (ret != EXIT_SUCCESS)
 			unlink(filename);
-		*/
 	}
 	exit(ret);
 }
