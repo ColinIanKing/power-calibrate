@@ -1032,12 +1032,13 @@ static void calc_trend(tuple_t *tuples, int n, double *gradient, double *interce
 static void show_help(char *const argv[])
 {
 	printf("%s, version %s\n\n", APP_NAME, VERSION);
-	printf("usage: %s [-d secs] [-c|-h|-C]\n", argv[0]);
+	printf("usage: %s [-d secs] [-c|-h|-C|-o jsonfile]\n", argv[0]);
 	printf("\t-c calibrate CPU power usage\n");
 	printf("\t-C calibrate context switch power usage\n");
 	printf("\t-d specify delay before starting, default is %d seconds\n", START_DELAY);
 	printf("\t-h show help\n");
 	printf("\t-n specify number of CPUs\n");
+	printf("\t-o jsonfile - output results into json formatted file\n");
 }
 
 /*

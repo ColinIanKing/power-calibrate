@@ -26,6 +26,7 @@ power-calibrate \- a tool to calibrate power consumption.
 .RI [ \-d " secs]
 .RI [ \-h ]
 .RI [ \-n " cpus]
+.RI [ \-o " file]
 .br
 
 .SH DESCRIPTION
@@ -49,6 +50,9 @@ show help.
 .TP
 .B \-n
 specify the number of CPUs on the device.  By default, the number of CPUs is determined automatically, but this option allows one to override this.
+.TP
+.B \-o file
+output results into a json formatted file.
 .RE
 .SH SEE ALSO
 .BR powerstat (8), 
