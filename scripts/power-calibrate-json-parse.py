@@ -109,12 +109,23 @@ ctxt_switches = hc["context-switches"]["context-switches-total"]["context-switch
 cpu_total_watts = cpu_1pc * total_cpu
 ctxt_total_watts = ctxt_sw * ctxt_switches
 total_watts = cpu_total_watts + ctxt_total_watts
-rel = ((cpu_total_watts * cpu_r2) + (ctxt_total_watts * ctxt_r2)) / total_watts
-print "CPU               : %8.3f Watts (%.2f%% CPU, %.2f%% of total power)" % \
-	(cpu_total_watts, total_cpu, cpu_total_watts / total_watts * 100)
-print "Context Switches  : %8.3f Watts (%.2f switches, %.2f%% of total power)" % \
-	(ctxt_sw * ctxt_switches, ctxt_switches, ctxt_total_watts / total_watts * 100)
-print "Total             : %8.3f Watts (%s estimate)" % (total_watts, r2tostr(rel))
+
+if total_watts == 0.0:
+	print "CPU               : %8.3f Watts (%.2f%% CPU)" % \
+		(cpu_total_watts, total_cpu)
+	print "Context Switches  : %8.3f Watts (%.2f switches)" % \
+		(ctxt_sw * ctxt_switches, ctxt_switches)
+	print "Total             : %8.3f Watts" % total_watts
+else:
+	rel = ((cpu_total_watts * cpu_r2) + (ctxt_total_watts * ctxt_r2)) / total_watts
+	cpu_pc = cpu_total_watts / total_watts * 100
+	ctxt_pc = ctxt_total_watts / total_watts * 100
+	print "CPU               : %8.3f Watts (%.2f%% CPU, %.2f%% of total power)" % \
+		(cpu_total_watts, total_cpu, cpu_pc)
+	print "Context Switches  : %8.3f Watts (%.2f switches, %.2f%% of total power)" % \
+		(ctxt_sw * ctxt_switches, ctxt_switches, ctxt_pc)
+	print "Total             : %8.3f Watts (%s estimate)" % (total_watts, r2tostr(rel))
+
 
 print " "
 
