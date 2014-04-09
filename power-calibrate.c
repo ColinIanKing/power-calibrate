@@ -143,7 +143,7 @@ static inline double timeval_to_double(const struct timeval *tv)
  *  stress_cpu()
  *	stress CPU 
  */
-static void stress_cpu(uint64_t cpu_load)
+static void stress_cpu(const uint64_t cpu_load)
 {
 	set_proc_name(APP_NAME "-cpu");
 
@@ -198,7 +198,7 @@ static void stress_cpu(uint64_t cpu_load)
  *  stress_ctxt
  *	generate context switches by periodic wakeups
  */
-static void stress_ctxt(uint64_t delay)
+static void stress_ctxt(const uint64_t delay)
 {
 	set_proc_name(APP_NAME "-ctxt");
 
@@ -260,7 +260,7 @@ static void stress_ctxt(uint64_t delay)
  *  stop_load()
  *	kill load child processes
  */
-static void stop_load(pid_t *pids, int32_t total_procs)
+static void stop_load(const pid_t *pids, const int32_t total_procs)
 {
 	int32_t i;
 
@@ -997,7 +997,12 @@ sample_now:
  *	calculate linear trendline - compute gradient, y intercept and 
  *	coefficient of determination.
  */
-static void calc_trend(tuple_t *tuples, int n, double *gradient, double *intercept, double *r2)
+static void calc_trend(
+	const tuple_t *tuples,
+	const int n,
+	double *gradient,
+	double *intercept,
+	double *r2)
 {
 	int i;
 	double a = 0.0, b, c = 0.0, d, e, f;
@@ -1059,7 +1064,7 @@ static void show_help(char *const argv[])
  *  coefficient_r2()
  *	give some idea of r2 
  */
-static const char *coefficient_r2(double r2)
+static const char *coefficient_r2(const double r2)
 {
 	if (r2 < 0.4)
 		return "very weak";
@@ -1084,8 +1089,8 @@ static void dump_json_values(
 	FILE *fp,
 	const char *heading,
 	const char *field,
-	double value,
-	double r2)
+	const double value,
+	const double r2)
 {
 	if (!fp)
 		return;
