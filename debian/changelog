@@ -1,3 +1,17 @@
+power-calibrate (0.01.03) trusty; urgency=low
+
+  * Makefile: bump version
+  * Add some more const args
+  * Add some more comments
+  * Add author name into header
+  * unlink json file if tests fail to run
+  * Make max_readings non-configurable
+  * Add -o option to documentation and internal help
+  * Add example json parser script
+  * Add json output
+
+ -- Colin King <colin.king@canonical.com>  Wed, 9 Apr 2014 14:50:00 +0100
+
 power-calibrate (0.01.02) trusty; urgency=low
 
   * Makefile: bump version
