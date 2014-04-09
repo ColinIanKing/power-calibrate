@@ -43,6 +43,7 @@
 #include <sys/time.h>
 #include <sys/prctl.h>
 #include <sys/wait.h>
+#include <sys/utsname.h>
 
 #define APP_NAME		"power-calibrate"
 #define MIN_RUN_DURATION	(120)		/* We recommend a run of 2 minute pers sample */
@@ -297,13 +298,17 @@ void start_load(
 	memset(pids, 0, sizeof(pid_t) * total_procs);
 
 	for (n_procs = 0; n_procs < total_procs; n_procs++) {
+		int fd;
 		int pid = fork();
+
 		switch (pid) {
 		case -1:
 			fprintf(stderr, "Cannot fork\n");
 			stop_load(pids, n_procs);
 			exit(EXIT_FAILURE);
 		case 0:
+			for (fd = (getdtablesize() - 1); fd > 2; fd--)
+				close(fd);
 			/* Child */
 			load_func(param);
 			exit(0);
@@ -1043,11 +1048,66 @@ static const char *coefficient_r2(double r2)
 {
 	if (r2 < 0.4)
 		return "very weak";
-	if (r2 < 0.8)
+	if (r2 < 0.75)
 		return "weak";
-	if (r2 < 0.9)
+	if (r2 < 0.80)
+		return "fair";
+	if (r2 < 0.90)
+		return "good";
+	if (r2 < 0.95)
 		return "strong";
-	return "very strong";
+	if (r2 < 1.0)
+		return "very strong";
+	return "perfect";
+}
+
+/*
+ *  dump_json_values()
+ *	output json formatted data
+ */
+static void dump_json_values(
+	FILE *fp,
+	const char *heading,
+	const char *field,
+	double value,
+	double r2)
+{
+	if (!fp)
+		return;
+
+	fprintf(fp, "    \"%s\":{\n", heading);
+	fprintf(fp, "      \"%s\":%f,\n", field, value);
+	fprintf(fp, "      \"r-squared\":%f\n", r2);
+	fprintf(fp, "    },\n");
+}
+
+/*
+ *  dump_json_misc()
+ *	output json misc test data
+ */
+static void dump_json_misc(FILE *fp)
+{
+	time_t now;
+	struct tm tm;
+	struct utsname buf;
+
+
+	time(&now);
+	localtime_r(&now, &tm);
+
+	memset(&buf, 0, sizeof(struct utsname));
+	uname(&buf);
+
+	fprintf(fp, "    \"test-run\":{\n");
+	fprintf(fp, "      \"date\":\"%2.2d/%2.2d/%-2.2d\",\n",
+		tm.tm_mday, tm.tm_mon + 1, (tm.tm_year+1900) % 100);
+	fprintf(fp, "      \"time\":\"%2.2d:%2.2d:%-2.2d\",\n",
+		tm.tm_hour, tm.tm_min, tm.tm_sec);
+	fprintf(fp, "      \"sysname\":\"%s\",\n", buf.sysname);
+	fprintf(fp, "      \"nodename\":\"%s\",\n", buf.nodename);
+	fprintf(fp, "      \"release\":\"%s\",\n", buf.release);
+	fprintf(fp, "      \"machine\":\"%s\"\n", buf.machine);
+	fprintf(fp, "    }\n");
 }
  
 
@@ -1055,7 +1115,10 @@ static const char *coefficient_r2(double r2)
  *  monitor_cpu_load()
  *	load CPU(s) and gather stats
  */
-static int monitor_cpu_load(const int start_delay, const int max_readings)
+static int monitor_cpu_load(
+	FILE *fp,
+	const int start_delay,
+	const int max_readings)
 {
 	int cpus, i, n = 0;
 	tuple_t	 tuples[num_cpus * MAX_CPU_LOAD];
@@ -1096,6 +1159,8 @@ static int monitor_cpu_load(const int start_delay, const int max_readings)
 		coefficient_r2(r2));
 	printf("\n");
 
+	dump_json_values(fp, "cpu-load", "one-percent-cpu-load", gradient, r2);
+
 	return 0;
 }
 
@@ -1103,7 +1168,10 @@ static int monitor_cpu_load(const int start_delay, const int max_readings)
  *  monitor_ctxt_load()
  *	load CPU(s) with context switches and gather stats
  */
-static int monitor_ctxt_load(const int start_delay, const int max_readings)
+static int monitor_ctxt_load(
+	FILE *fp,
+	const int start_delay,
+	const int max_readings)
 {
 	int i, n = 0;
 	tuple_t	 tuples[CTXT_SAMPLES];
@@ -1141,12 +1209,17 @@ static int monitor_ctxt_load(const int start_delay, const int max_readings)
 		coefficient_r2(r2));
 	printf("\n");
 
+	dump_json_values(fp, "context-switches", "one-context-switch", gradient, r2);
+
 	return 0;
 }
 
 int main(int argc, char * const argv[])
 {
 	int max_readings, run_duration, start_delay = START_DELAY;
+	char *filename = NULL;
+	FILE *fp = NULL;
+	int ret = EXIT_FAILURE;
 
 	num_cpus = sysconf(_SC_NPROCESSORS_CONF);
 
@@ -1154,7 +1227,7 @@ int main(int argc, char * const argv[])
     	siginterrupt(SIGINT, 1);
 
 	for (;;) {
-		int c = getopt(argc, argv, "cCd:hn:");
+		int c = getopt(argc, argv, "cCd:hn:o:");
 		if (c == -1)
 			break;
 		switch (c) {
@@ -1168,33 +1241,46 @@ int main(int argc, char * const argv[])
 			start_delay = atoi(optarg);
 			if (start_delay < 0) {
 				fprintf(stderr, "Start delay must be 0 or more seconds\n");
-				exit(EXIT_FAILURE);
+				goto out;
 			}
 			break;
 		case 'h':
 			show_help(argv);
-			exit(EXIT_SUCCESS);
+			goto out;
 		case 'n':
 			num_cpus = atoi(optarg);
 			if (num_cpus < 1) {
 				fprintf(stderr, "Number of CPUs must be 1 or more.\n");
-				exit(EXIT_FAILURE);
+				goto out;
 			}
+			break;
+		case 'o':
+			filename = optarg;
+			break;
 		}
 	}
 
 	if (!(opt_flags & (OPT_CPU_LOAD | OPT_CTXT_LOAD))) {
 		fprintf(stderr, "Requires -c or -C option(s).\n");
-		exit(EXIT_FAILURE);
+		goto out;
 	}
 
 	if (optind < argc) {
 		sample_delay = atoi(argv[optind++]);
 		if (sample_delay < 1) {
 			fprintf(stderr, "Sample delay must be >= 1\n");
-			exit(EXIT_FAILURE);
+			goto out;
 		}
 	}
+
+	if (filename) {
+		if ((fp = fopen(filename, "w")) == NULL) {
+			fprintf(stderr, "Cannot open json output file '%s'.\n", filename);
+			goto out;
+		}
+		fprintf(fp, "{\n  \"" APP_NAME "\":{\n");
+	}
+
 
 	run_duration = MIN_RUN_DURATION + START_DELAY - start_delay;
 
@@ -1203,21 +1289,33 @@ int main(int argc, char * const argv[])
 		if ((max_readings * sample_delay) < run_duration) {
 			fprintf(stderr, "Number of readings should be at least %d\n",
 				run_duration / sample_delay);
-			exit(EXIT_FAILURE);
+			goto out;
 		}
 	} else {
 		max_readings = run_duration / sample_delay;
 	}
 
 	if (not_discharging())
-		exit(EXIT_FAILURE);
+		goto out;
 
 	if (opt_flags & OPT_CPU_LOAD)
-		if (monitor_cpu_load(start_delay, max_readings) < 0)
-			exit(EXIT_FAILURE);
+		if (monitor_cpu_load(fp, start_delay, max_readings) < 0)
+			goto out;
 	if (opt_flags & OPT_CTXT_LOAD)
-		if (monitor_ctxt_load(start_delay, max_readings) < 0)
-			exit(EXIT_FAILURE);
+		if (monitor_ctxt_load(fp, start_delay, max_readings) < 0)
+			goto out;
 
-	exit(EXIT_SUCCESS);
+	ret = EXIT_SUCCESS;
+out:
+	if (fp) {
+		dump_json_misc(fp);
+
+		fprintf(fp, "  }\n}\n");
+		fclose(fp);
+		/*
+		if (ret != EXIT_SUCCESS)
+			unlink(filename);
+		*/
+	}
+	exit(ret);
 }
