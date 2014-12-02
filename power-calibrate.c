@@ -195,7 +195,7 @@ static void stress_cpu(const uint64_t cpu_load)
 		gettimeofday(&tv1, NULL);
 		for (j = 0; j < 64; j++) {
 			for (i = 0; i < 16384; i++)
-				sqrt((double)rand());
+				sqrt((double)mwc());
 		}
 		gettimeofday(&tv2, NULL);
 		t = timeval_to_double(&tv2) - timeval_to_double(&tv1);
