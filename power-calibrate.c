@@ -78,6 +78,9 @@
 #define PROC_EXIT		(16)
 #define MAX_VALUES		(17)
 
+#define MWC_SEED_Z		(362436069ULL)
+#define MWC_SEED_W		(521288629ULL)
+
 #define SYS_CLASS_POWER_SUPPLY		"/sys/class/power_supply"
 #define PROC_ACPI_BATTERY		"/proc/acpi/battery"
 
@@ -121,6 +124,20 @@ typedef void (*func)(uint64_t param);
 #endif
 
 /*
+ *  mwc()
+ *      fast pseudo random number generator, see
+ *      http://www.cse.yorku.ca/~oz/marsaglia-rng.html
+ */
+static inline uint64_t mwc(void)
+{
+	static uint64_t w = MWC_SEED_W, z = MWC_SEED_Z;
+
+	z = 36969 * (z & 65535) + (z >> 16);
+	w = 18000 * (w & 65535) + (w >> 16);
+	return (z << 16) + w;
+}
+
+/*
  *  handle_sigint()
  *	catch SIGINT and flag a stop
  */
@@ -147,14 +164,12 @@ static void stress_cpu(const uint64_t cpu_load)
 {
 	set_proc_name(APP_NAME "-cpu");
 
-	srand(0x1234);
-
 	/*
 	 * Normal use case, 100% load, simple spinning on CPU
 	 */
 	if (cpu_load == 100) {
 		for (;;)
-			sqrt((double)rand());
+			sqrt((double)mwc());
 		exit(EXIT_SUCCESS);
 	}
 
