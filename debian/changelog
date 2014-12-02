@@ -1,3 +1,13 @@
+power-calibrate (0.01.04) vivid; urgency=medium
+
+  * Makefile: bump version
+  * Forgot to replace all rand() calls with mwc()
+  * Remove rand function, use mcw() as it is far faster
+  * Handle zero power consumption
+  * Add example power calibration script
+
+ -- Colin King <colin.king@canonical.com>  Tue, 2 Apr 2014 11:54:00 +0000
+
 power-calibrate (0.01.03) trusty; urgency=low
 
   * Makefile: bump version
