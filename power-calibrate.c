@@ -192,12 +192,12 @@ static void stress_cpu(const uint64_t cpu_load)
 		double t, delay;
 		struct timeval tv1, tv2;
 
-		gettimeofday(&tv1, NULL);
+		(void)gettimeofday(&tv1, NULL);
 		for (j = 0; j < 64; j++) {
 			for (i = 0; i < 16384; i++)
 				sqrt((double)mwc());
 		}
-		gettimeofday(&tv2, NULL);
+		(void)gettimeofday(&tv2, NULL);
 		t = timeval_to_double(&tv2) - timeval_to_double(&tv1);
 		/* Must not calculate this with zero % load */
 		delay = t * (((100.0 / (double) cpu_load)) - 1.0);
@@ -928,7 +928,12 @@ static int monitor(
 	stats_clear(&average);
 	stats_clear(&stddev);
 
-	gettimeofday(&t1, NULL);
+	if (gettimeofday(&t1, NULL) < 0) {
+		fprintf(stderr, "gettimeofday failed: errno=%d (%s).\n",
+			errno, strerror(errno));
+		free(stats);
+		return -1;
+	}
 	stats_read(&s1);
 
 	while (!stop_recv && (readings < max_readings)) {
@@ -936,7 +941,12 @@ static int monitor(
 		suseconds_t usec;
 		struct timeval tv;
 
-		(void)gettimeofday(&t2, NULL);
+		if (gettimeofday(&t2, NULL) < 0) {
+			fprintf(stderr, "gettimeofday failed: errno=%d (%s).\n",
+				errno, strerror(errno));
+			free(stats);
+			return -1;
+		}
 		usec = ((t1.tv_sec + sample_delay - t2.tv_sec) * 1000000) + (t1.tv_usec - t2.tv_usec);
 		if (usec < 0)
 			goto sample_now;
@@ -944,7 +954,6 @@ static int monitor(
 		tv.tv_usec = usec % 1000000;
 
 		ret = select(0, NULL, NULL, NULL, &tv);
-
 		if (ret < 0) {
 			if (errno == EINTR)
 				break;
@@ -960,7 +969,12 @@ static int monitor(
 
 sample_now:
 			time_now(tmbuffer, sizeof(tmbuffer));
-			(void)gettimeofday(&t1, NULL);
+			if (gettimeofday(&t1, NULL) < 0) {
+				fprintf(stderr, "gettimeofday failed: errno=%d (%s).\n",
+					errno, strerror(errno));
+				free(stats);
+				return -1;
+			}
 			stats_read(&s2);
 
 			/*
@@ -969,7 +983,12 @@ sample_now:
 			if (!stats_gather(&s1, &s2, &stats[readings])) {
 				stats_clear(&stats[readings]);
 				stats_read(&s1);
-				gettimeofday(&t1, NULL);
+				if (gettimeofday(&t1, NULL) < 0) {
+					fprintf(stderr, "gettimeofday failed: errno=%d (%s).\n",
+						errno, strerror(errno));
+					free(stats);
+					return -1;
+				}
 				continue;
 			}
 
