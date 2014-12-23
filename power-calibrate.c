@@ -227,12 +227,12 @@ static void stress_ctxt(const uint64_t delay)
 
 	pid = fork();
 	if (pid < 0) {
-		close(pipefds[0]);
-		close(pipefds[1]);
+		(void)close(pipefds[0]);
+		(void)close(pipefds[1]);
 		exit(EXIT_FAILURE);
 	} else if (pid == 0) {
 		/* Child, immediately exit */
-		close(pipefds[1]);
+		(void)close(pipefds[1]);
 
 		for (;;) {
 			char ch;
@@ -243,14 +243,14 @@ static void stress_ctxt(const uint64_t delay)
 				if (ch == CTXT_STOP)
 					break;
 			}
-			close(pipefds[0]);
+			(void)close(pipefds[0]);
 			exit(EXIT_SUCCESS);
 		}
 	} else {
 		char ch = '_';
 
 		/* Parent */
-		close(pipefds[0]);
+		(void)close(pipefds[0]);
 
 		for (;;) {
 			if (write(pipefds[1],  &ch, sizeof(ch)) < 0) {
@@ -324,7 +324,7 @@ void start_load(
 			exit(EXIT_FAILURE);
 		case 0:
 			for (fd = (getdtablesize() - 1); fd > 2; fd--)
-				close(fd);
+				(void)close(fd);
 			/* Child */
 			load_func(param);
 			exit(0);
@@ -348,7 +348,7 @@ static char *file_get(const char *const file)
 		return NULL;
 
 	if (fgets(buffer, sizeof(buffer), fp) == NULL) {
-		fclose(fp);
+		(void)fclose(fp);
 		return NULL;
 	}
 
@@ -628,7 +628,7 @@ static int power_rate_get_sys_fs(
 			snprintf(path, sizeof(path), "%s/%s/uevent", SYS_CLASS_POWER_SUPPLY, dirent->d_name);
 			if ((fp = fopen(path, "r")) == NULL) {
 				fprintf(stderr, "Battery %s present but under supported - no state present.", dirent->d_name);
-				closedir(dir);
+				(void)closedir(dir);
 				return -1;
 			} else {
 				char buffer[4096];
@@ -676,7 +676,7 @@ static int power_rate_get_sys_fs(
 				total_watts     += watts_rate + voltage * amps_rate;
 				total_capacity  += watts_left + voltage * amps_left;
 				n++;
-				fclose(fp);
+				(void)fclose(fp);
 			}
 		}
 	} while (dirent);
@@ -810,7 +810,7 @@ static int power_rate_get_proc_acpi(
 						}
 					}
 				}
-				fclose(file);
+				(void)fclose(file);
 			}
 		}
 
@@ -1361,7 +1361,7 @@ out:
 		dump_json_misc(fp);
 
 		fprintf(fp, "  }\n}\n");
-		fclose(fp);
+		(void)fclose(fp);
 		if (ret != EXIT_SUCCESS)
 			unlink(filename);
 	}
