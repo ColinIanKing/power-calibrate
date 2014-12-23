@@ -114,6 +114,71 @@ static volatile int stop_recv;			/* sighandler stop flag */
 static int num_cpus;				/* number of CPUs */
 static int opt_flags;				/* command options */
 
+/*
+ *  Attempt to catch a range of signals so
+ *  we can clean
+ */
+static const int signals[] = {
+	/* POSIX.1-1990 */
+#ifdef SIGHUP
+	SIGHUP,
+#endif
+#ifdef SIGINT
+	SIGINT,
+#endif
+#ifdef SIGQUIT
+	SIGQUIT,
+#endif
+#ifdef SIGILL
+	SIGILL,
+#endif
+#ifdef SIGABRT
+	SIGABRT,
+#endif
+#ifdef SIGFPE
+	SIGFPE,
+#endif
+#ifdef SIGSEGV
+	SIGSEGV,
+#endif
+#ifdef SIGTERM
+	SIGTERM,
+#endif
+#ifdef SIGUSR1
+	SIGUSR1,
+#endif
+#ifdef SIGUSR2
+	SIGUSR2,
+	/* POSIX.1-2001 */
+#endif
+#ifdef SIGBUS
+	SIGBUS,
+#endif
+#ifdef SIGXCPU
+	SIGXCPU,
+#endif
+#ifdef SIGXFSZ
+	SIGXFSZ,
+#endif
+	/* Linux various */
+#ifdef SIGIOT
+	SIGIOT,
+#endif
+#ifdef SIGSTKFLT
+	SIGSTKFLT,
+#endif
+#ifdef SIGPWR
+	SIGPWR,
+#endif
+#ifdef SIGINFO
+	SIGINFO,
+#endif
+#ifdef SIGVTALRM
+	SIGVTALRM,
+#endif
+	-1,
+};
+
 typedef void (*func)(uint64_t param);
 
 #if defined (__linux__)
@@ -138,10 +203,10 @@ static inline uint64_t mwc(void)
 }
 
 /*
- *  handle_sigint()
- *	catch SIGINT and flag a stop
+ *  handle_sig()
+ *	catch signal and flag a stop
  */
-static void handle_sigint(int dummy)
+static void handle_sig(int dummy)
 {
 	(void)dummy;
 	stop_recv = 1;
@@ -304,12 +369,18 @@ void start_load(
 	const uint64_t param)
 {
 	int32_t n_procs;
-	struct sigaction new_action, old_action;
+	int i;
+	struct sigaction new_action;
 
-	new_action.sa_handler = handle_sigint;
-	sigemptyset(&new_action.sa_mask);
-	new_action.sa_flags = 0;
-	sigaction(SIGINT, &new_action, &old_action);
+	memset(&new_action, 0, sizeof(new_action));
+	for (i = 0; signals[i] != -1; i++) {
+		new_action.sa_handler = handle_sig;
+		sigemptyset(&new_action.sa_mask);
+		new_action.sa_flags = 0;
+
+		(void)sigaction(signals[i], &new_action, NULL);
+		(void)siginterrupt(signals[i], 1);
+	}
 
 	memset(pids, 0, sizeof(pid_t) * total_procs);
 
@@ -1279,12 +1350,10 @@ int main(int argc, char * const argv[])
 	int max_readings, run_duration, start_delay = START_DELAY;
 	char *filename = NULL;
 	FILE *fp = NULL;
-	int ret = EXIT_FAILURE;
+	int ret = EXIT_FAILURE, i;
+	struct sigaction new_action;
 
 	num_cpus = sysconf(_SC_NPROCESSORS_CONF);
-
-    	signal(SIGINT, &handle_sigint);
-    	siginterrupt(SIGINT, 1);
 
 	for (;;) {
 		int c = getopt(argc, argv, "cCd:hn:o:");
@@ -1341,6 +1410,19 @@ int main(int argc, char * const argv[])
 		fprintf(fp, "{\n  \"" APP_NAME "\":{\n");
 	}
 
+	memset(&new_action, 0, sizeof(new_action));
+	for (i = 0; signals[i] != -1; i++) {
+		new_action.sa_handler = handle_sig;
+		sigemptyset(&new_action.sa_mask);
+		new_action.sa_flags = 0;
+
+		if (sigaction(signals[i], &new_action, NULL) < 0) {
+			fprintf(stderr, "sigaction failed: errno=%d (%s)\n",
+				errno, strerror(errno));
+			goto out;
+		}
+		(void)siginterrupt(signals[i], 1);
+	}
 
 	run_duration = MIN_RUN_DURATION + START_DELAY - start_delay;
 	max_readings = run_duration / sample_delay;
