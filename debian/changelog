@@ -1,3 +1,14 @@
+power-calibrate (0.01.05) vivid; urgency=medium
+
+  * Debian: update standards version
+  * Makefile: bump version
+  * Add better signal handling
+  * Ignore errors on close, fclose, closedir failures
+  * Handle error on time() failing
+  * Handle gettimeofday error returns
+
+ -- Colin King <colin.king@canonical.com>  Tue, 23 Dec 2014 00:14:00 +0000
+
 power-calibrate (0.01.04) vivid; urgency=medium
 
   * Makefile: bump version
@@ -6,7 +17,7 @@ power-calibrate (0.01.04) vivid; urgency=medium
   * Handle zero power consumption
   * Add example power calibration script
 
- -- Colin King <colin.king@canonical.com>  Tue, 2 Apr 2014 11:54:00 +0000
+ -- Colin King <colin.king@canonical.com>  Tue, 2 Dec 2014 11:54:00 +0000
 
 power-calibrate (0.01.03) trusty; urgency=low
 
