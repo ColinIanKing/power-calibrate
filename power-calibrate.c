@@ -366,11 +366,14 @@ static void time_now(char *const buffer, const size_t buflen)
 	struct tm tm;
 	time_t now;
 
-	(void)time(&now);
-	(void)localtime_r(&now, &tm);
-
-	snprintf(buffer, buflen, "%2.2d:%2.2d:%2.2d ",
-		tm.tm_hour, tm.tm_min, tm.tm_sec);
+	now = time(NULL);
+	if (now == ((time_t) -1)) {
+		snprintf(buffer, buflen, "--:--:-- ");
+	} else {
+		(void)localtime_r(&now, &tm);
+		snprintf(buffer, buflen, "%2.2d:%2.2d:%2.2d ",
+			tm.tm_hour, tm.tm_min, tm.tm_sec);
+	}
 }
 
 /*
@@ -1145,9 +1148,13 @@ static void dump_json_misc(FILE *fp)
 	struct tm tm;
 	struct utsname buf;
 
-	time(&now);
-	localtime_r(&now, &tm);
-
+	now = time(NULL);
+	if (now == ((time_t) -1)) {
+		memset(&tm, 0, sizeof(tm));
+	} else {
+		localtime_r(&now, &tm);
+	}
+	
 	memset(&buf, 0, sizeof(struct utsname));
 	uname(&buf);
 
