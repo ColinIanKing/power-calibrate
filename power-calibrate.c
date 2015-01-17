@@ -114,7 +114,7 @@ typedef struct {
 } tuple_t;
 
 static int sample_delay   = SAMPLE_DELAY;	/* time between each sample in secs */
-static volatile int stop_recv;			/* sighandler stop flag */
+static volatile bool stop_flag;			/* sighandler stop flag */
 static int num_cpus;				/* number of CPUs */
 static int opt_flags;				/* command options */
 static int samples_cpu = 10.0;
@@ -249,7 +249,7 @@ static inline uint64_t mwc(void)
 static void handle_sig(int dummy)
 {
 	(void)dummy;
-	stop_recv = 1;
+	stop_flag = true;
 }
 
 /*
@@ -283,6 +283,8 @@ static void stress_cpu(const uint64_t cpu_load)
 				__asm__ __volatile__("");
 #endif
 				mwc();
+				if (stop_flag)
+					exit(EXIT_SUCCESS);
 			}
 		}
 		exit(EXIT_SUCCESS);
@@ -291,6 +293,8 @@ static void stress_cpu(const uint64_t cpu_load)
 	if (cpu_load == 0) {
 		for (;;) {
 			sleep(DEFAULT_TIMEOUT);
+			if (stop_flag)
+				exit(EXIT_SUCCESS);
 		}
 		exit(EXIT_SUCCESS);
 	}
@@ -312,6 +316,8 @@ static void stress_cpu(const uint64_t cpu_load)
 			__asm__ __volatile__("");
 #endif
 			mwc();
+			if (stop_flag)
+				exit(EXIT_SUCCESS);
 		}
 		delay = gettime_to_double() - time_start;
 		/* Must not calculate this with zero % load */
@@ -351,7 +357,7 @@ static void stress_ctxt(const uint64_t delay)
 			for (;;) {
 				if (read(pipefds[0], &ch, sizeof(ch)) <= 0)
 					break;	/* happens on pipe breakage */
-				if (ch == CTXT_STOP)
+				if (stop_flag || (ch == CTXT_STOP))
 					break;
 			}
 			(void)close(pipefds[0]);
@@ -363,7 +369,7 @@ static void stress_ctxt(const uint64_t delay)
 		/* Parent */
 		(void)close(pipefds[0]);
 
-		for (;;) {
+		while (!stop_flag) {
 			if (write(pipefds[1],  &ch, sizeof(ch)) < 0) {
 				fprintf(stderr, "stress_ctxt: write failed, errno=%d [%d]\n", errno, getpid());
 				break;
@@ -1098,7 +1104,7 @@ static int monitor(
 			if (power_rate_get(&dummy_power, &dummy_voltage, &dummy_current,
 					   &discharging, &dummy_inaccurate) < 0)
 				return -1;
-			if (sleep(1) || stop_recv)
+			if (sleep(1) || stop_flag)
 				return -1;
 			if (!discharging)
 				return -1;
@@ -1126,7 +1132,7 @@ static int monitor(
 		return -1;
 	}
 
-	while (!stop_recv && (readings < max_readings)) {
+	while (!stop_flag && (readings < max_readings)) {
 		int ret = 0;
 		double secs, time_now;
 		struct timeval tv;
@@ -1157,6 +1163,8 @@ static int monitor(
 			return -1;
 		}
 sample_now:
+		if (stop_flag)
+			break;
 		/* Time out, so measure some more samples */
 		if (ret == 0) {
 			char tmbuffer[10];
@@ -1389,7 +1397,7 @@ static int monitor_cpu_load(
 
     			ret = monitor(start_delay, max_readings, buffer, percent_each, percent, &tuple->x, &dummy, &tuple->y, &voltage);
 			stop_load(pids, cpus);
-			if (ret < 0)
+			if (stop_flag || (ret < 0))
 				return -1;
 			tuple++;
 			n++;
@@ -1445,7 +1453,7 @@ static int monitor_ctxt_load(
 		start_load(pids, 1, stress_ctxt, delay);
     		ret = monitor(start_delay, max_readings, buffer, percent_each, percent, &dummy, &tuple->x, &tuple->y, &voltage);
 		stop_load(pids, 1);
-		if (ret < 0)
+		if (stop_flag || (ret < 0))
 			return -1;
 		tuple++;
 		n++;
