@@ -50,7 +50,8 @@
 #include <sys/utsname.h>
 
 #define APP_NAME		"power-calibrate"
-#define MIN_RUN_DURATION	(60)		/* We recommend a run of 2 minute pers sample */
+#define MIN_RUN_DURATION	(30)		/* We recommend a run of 2 minute pers sample */
+#define DEFAULT_RUN_DURATION	(120)
 #define SAMPLE_DELAY		(1)		/* Delay between samples in seconds */
 #define START_DELAY		(15)		/* Delay to wait before sampling */
 #define	RATE_ZERO_LIMIT		(0.001)		/* Less than this we call the power rate zero */
@@ -1396,6 +1397,7 @@ static int monitor_ctxt_load(
 int main(int argc, char * const argv[])
 {
 	int max_readings, run_duration, start_delay = START_DELAY;
+	int opt_run_duration = DEFAULT_RUN_DURATION;
 	char *filename = NULL;
 	FILE *fp = NULL;
 	int ret = EXIT_FAILURE, i;
@@ -1404,7 +1406,7 @@ int main(int argc, char * const argv[])
 	num_cpus = sysconf(_SC_NPROCESSORS_CONF);
 
 	for (;;) {
-		int c = getopt(argc, argv, "cCd:hn:o:ps:S:");
+		int c = getopt(argc, argv, "cCd:hn:o:ps:S:r:");
 		if (c == -1)
 			break;
 		switch (c) {
@@ -1436,6 +1438,13 @@ int main(int argc, char * const argv[])
 			break;
 		case 'p':
 			opt_flags |= OPT_PROGRESS;
+			break;
+		case 'r':
+			opt_run_duration = atoi(optarg);
+			if (opt_run_duration < MIN_RUN_DURATION) {
+				fprintf(stderr, "Minimum run duration must be %d seconds or more\n", MIN_RUN_DURATION);
+				goto out;
+			}
 			break;
 		case 's':
 			samples_cpu = atoi(optarg);
@@ -1489,7 +1498,7 @@ int main(int argc, char * const argv[])
 		(void)siginterrupt(signals[i], 1);
 	}
 
-	run_duration = MIN_RUN_DURATION + START_DELAY - start_delay;
+	run_duration = opt_run_duration + START_DELAY - start_delay;
 	max_readings = run_duration / sample_delay;
 
 	if (not_discharging())
