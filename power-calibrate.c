@@ -49,7 +49,6 @@
 #include <sys/wait.h>
 #include <sys/utsname.h>
 
-#define APP_NAME		"power-calibrate"
 #define MIN_RUN_DURATION	(30)		/* We recommend a run of 2 minute pers sample */
 #define DEFAULT_RUN_DURATION	(120)
 #define SAMPLE_DELAY		(1)		/* Delay between samples in seconds */
@@ -120,6 +119,7 @@ static int num_cpus;				/* number of CPUs */
 static int opt_flags;				/* command options */
 static int samples_cpu = 10.0;
 static int samples_ctxt = CTXT_SAMPLES;
+static char *app_name = "power-calibrate";
 
 /*
  *  Attempt to catch a range of signals so
@@ -271,8 +271,6 @@ void set_affinity(int cpu)
  */
 static void stress_cpu(const uint64_t cpu_load)
 {
-	set_proc_name(APP_NAME "-cpu");
-
 	/*
 	 * Normal use case, 100% load, simple spinning on CPU
 	 */
@@ -330,8 +328,6 @@ static void stress_cpu(const uint64_t cpu_load)
  */
 static void stress_ctxt(const uint64_t delay)
 {
-	set_proc_name(APP_NAME "-ctxt");
-
 	pid_t pid;
 	int pipefds[2];
 
@@ -1223,7 +1219,7 @@ static void calc_trend(
  */
 static void show_help(char *const argv[])
 {
-	printf("%s, version %s\n\n", APP_NAME, VERSION);
+	printf("%s, version %s\n\n", app_name, VERSION);
 	printf("usage: %s [-d secs] [-c|-h|-C|-o jsonfile]\n", argv[0]);
 	printf("\t-c calibrate CPU power usage\n");
 	printf("\t-C calibrate context switch power usage\n");
@@ -1505,7 +1501,7 @@ int main(int argc, char * const argv[])
 			fprintf(stderr, "Cannot open json output file '%s'.\n", filename);
 			goto out;
 		}
-		fprintf(fp, "{\n  \"" APP_NAME "\":{\n");
+		fprintf(fp, "{\n  \"%s\":{\n", app_name);
 	}
 
 	memset(&new_action, 0, sizeof(new_action));
