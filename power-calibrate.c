@@ -1480,6 +1480,9 @@ int main(int argc, char * const argv[])
 				goto out;
 			}
 			break;
+		default:
+			show_help(argv);
+			goto out;
 		}
 	}
 
