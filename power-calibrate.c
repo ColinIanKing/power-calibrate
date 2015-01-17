@@ -182,13 +182,6 @@ static const int signals[] = {
 
 typedef void (*func)(uint64_t param);
 
-#if defined (__linux__)
-/* Set process name, we don't care if it fails */
-#define set_proc_name(name) (void)prctl(PR_SET_NAME, name)
-#else
-#define set_proc_name(name)
-#endif
-
 /*
  *  timeval_to_double
  *	timeval to a double (in seconds)
