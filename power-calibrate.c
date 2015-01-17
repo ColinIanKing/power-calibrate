@@ -17,6 +17,8 @@
  *
  * Author: Colin Ian King <colin.king@canonical.com>
  */
+#define _GNU_SOURCE
+
 #include <stdlib.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -35,6 +37,7 @@
 #include <time.h>
 #include <getopt.h>
 #include <fcntl.h>
+#include <sched.h>
 
 #include <sys/ioctl.h>
 #include <sys/time.h>
@@ -47,13 +50,13 @@
 #include <sys/utsname.h>
 
 #define APP_NAME		"power-calibrate"
-#define MIN_RUN_DURATION	(120)		/* We recommend a run of 2 minute pers sample */
+#define MIN_RUN_DURATION	(60)		/* We recommend a run of 2 minute pers sample */
 #define SAMPLE_DELAY		(1)		/* Delay between samples in seconds */
 #define START_DELAY		(15)		/* Delay to wait before sampling */
 #define	RATE_ZERO_LIMIT		(0.001)		/* Less than this we call the power rate zero */
 #define	CTXT_SAMPLES		(20)
-#define MAX_CPU_LOAD		(10)
-#define DEFAULT_TIMEOUT		(60 * 60 * 24)
+#define MAX_CPU_LOAD		(100)
+#define DEFAULT_TIMEOUT		(10)
 #define CTXT_STOP		'X'
 
 #define OPT_CPU_LOAD		(0x00000001)
@@ -114,6 +117,8 @@ static int sample_delay   = SAMPLE_DELAY;	/* time between each sample in secs */
 static volatile int stop_recv;			/* sighandler stop flag */
 static int num_cpus;				/* number of CPUs */
 static int opt_flags;				/* command options */
+static int samples_cpu = 10.0;
+static int samples_ctxt = CTXT_SAMPLES;
 
 /*
  *  Attempt to catch a range of signals so
@@ -217,6 +222,19 @@ static inline double timeval_to_double(const struct timeval *tv)
 }
 
 /*
+ *  set_affinity()
+ *	set cpu affinity
+ */
+void set_affinity(int cpu)
+{
+	cpu_set_t mask;
+
+	CPU_ZERO(&mask);
+	CPU_SET(cpu % num_cpus, &mask);
+	(void)sched_setaffinity(0, sizeof(mask), &mask);
+}
+
+/*
  *  stress_cpu()
  *	stress CPU
  */
@@ -228,17 +246,23 @@ static void stress_cpu(const uint64_t cpu_load)
 	 * Normal use case, 100% load, simple spinning on CPU
 	 */
 	if (cpu_load == 100) {
-		for (;;)
-			sqrt((double)mwc());
+		int i;
+		for (;;) {
+			for (i = 0; i < 1000000; i++) {
+#if __GNUC__
+				/* Stop optimising out */
+				__asm__ __volatile__("");
+#endif
+				mwc();
+			}
+		}
 		exit(EXIT_SUCCESS);
 	}
 
-	/*
-	 * It is unlikely, but somebody may request to do a zero
-	 * load stress test(!)
-	 */
 	if (cpu_load == 0) {
-		sleep(DEFAULT_TIMEOUT);
+		for (;;) {
+			sleep(DEFAULT_TIMEOUT);
+		}
 		exit(EXIT_SUCCESS);
 	}
 
@@ -248,14 +272,17 @@ static void stress_cpu(const uint64_t cpu_load)
 	 * enough for most purposes.
 	 */
 	for (;;) {
-		int i, j;
+		int i;
 		double t, delay;
 		struct timeval tv1, tv2;
 
 		(void)gettimeofday(&tv1, NULL);
-		for (j = 0; j < 64; j++) {
-			for (i = 0; i < 16384; i++)
-				sqrt((double)mwc());
+		for (i = 0; i < 1000000; i++) {
+#if __GNUC__
+			/* Stop optimising out */
+			__asm__ __volatile__("");
+#endif
+			mwc();
 		}
 		(void)gettimeofday(&tv2, NULL);
 		t = timeval_to_double(&tv2) - timeval_to_double(&tv1);
@@ -389,6 +416,8 @@ void start_load(
 			stop_load(pids, n_procs);
 			exit(EXIT_FAILURE);
 		case 0:
+			set_affinity(n_procs);
+
 			for (fd = (getdtablesize() - 1); fd > 2; fd--)
 				(void)close(fd);
 			/* Child */
@@ -979,7 +1008,7 @@ static int monitor(
 		/* Gather up initial data */
 		for (i = 0; i < start_delay; i++) {
 			if (opt_flags & OPT_PROGRESS) {
-				fprintf(stdout, "%s: test calibrating %5.1f%%..\r",
+				fprintf(stdout, "%8.8s: test calibrating %5.1f%%..\r",
 					test, 100.0 * i / start_delay);
 				fflush(stdout);
 			}
@@ -1020,7 +1049,7 @@ static int monitor(
 
 		if (opt_flags & OPT_PROGRESS) {
 			double progress = readings * 100.0 / max_readings;
-			fprintf(stdout, "%s: test progress %5.1f%% (total progress %6.2f%%)\r",
+			fprintf(stdout, "%8.8s: test progress %5.1f%% (total progress %6.2f%%)\r",
 				test, progress, (progress * percent_each / 100.0) + percent);
 			fflush(stdout);
 		}
@@ -1263,21 +1292,22 @@ static int monitor_cpu_load(
 	const int max_readings)
 {
 	int cpus, i, n = 0;
-	tuple_t	 tuples[num_cpus * MAX_CPU_LOAD];
+	tuple_t	 tuples[num_cpus * samples_cpu];
 	tuple_t	*tuple = tuples;
 	double gradient, intercept, r2;
 	double average_voltage = 0.0;
+	double scale = MAX_CPU_LOAD / (samples_cpu - 1);
 
 	stats_headings("CPU load");
-	for (i = 0; i < MAX_CPU_LOAD; i++) {
+	for (i = 0; i < samples_cpu; i++) {
 		pid_t pids[num_cpus];
 
 		for (cpus = 1; cpus <= num_cpus; cpus++) {
 			char buffer[1024];
 			double dummy, voltage;
-			int cpu_load = (i + 1) * 10;
+			int cpu_load = scale * i;
 			int ret;
-			double percent_each = 100.0 / (MAX_CPU_LOAD * num_cpus);
+			double percent_each = 100.0 / (samples_cpu * num_cpus);
 			double percent = n * percent_each;
 
 			snprintf(buffer, sizeof(buffer), "%d%% x %d", cpu_load, cpus);
@@ -1294,11 +1324,13 @@ static int monitor_cpu_load(
 	}
 	average_voltage /= n;
 
-	calc_trend(tuples, num_cpus * MAX_CPU_LOAD, &gradient, &intercept, &r2);
+	calc_trend(tuples, num_cpus * samples_cpu, &gradient, &intercept, &r2);
 	printf("\n");
 	printf("Power (Watts) = (%% CPU load * %f) + %f\n",
 		gradient, intercept);
-	printf("1%% CPU load is about %f Watts (about %f mA)\n", gradient, 1000.0 * gradient / average_voltage);
+	printf("1%% CPU load is about %f Watts (about %f mA @ %.3f V)\n",
+			gradient, 1000.0 * gradient / average_voltage,
+			average_voltage);
 	printf("Coefficient of determination R^2 = %f (%s)\n", r2,
 		coefficient_r2(r2));
 	printf("\n");
@@ -1318,18 +1350,19 @@ static int monitor_ctxt_load(
 	const int max_readings)
 {
 	int i, n = 0;
-	tuple_t	 tuples[CTXT_SAMPLES];
+	tuple_t	 tuples[samples_ctxt];
 	tuple_t	*tuple = tuples;
 	double gradient, intercept, r2;
 	double average_voltage = 0.0;
+	double scale = 500.0 / samples_ctxt;
 
 	stats_headings("Wakeups");
-	for (i = 0; i < CTXT_SAMPLES; i++) {
+	for (i = 0; i < samples_ctxt; i++) {
 		pid_t pids[num_cpus];
 		char buffer[1024];
 		int ret;
 		double dummy, voltage;
-		uint64_t delay = 1000000 / (25 * (i + 1));
+		uint64_t delay = 1000000 / (scale * (i + 1));
 		double percent_each = 100.0 / CTXT_SAMPLES;
 		double percent = i * percent_each;
 
@@ -1371,7 +1404,7 @@ int main(int argc, char * const argv[])
 	num_cpus = sysconf(_SC_NPROCESSORS_CONF);
 
 	for (;;) {
-		int c = getopt(argc, argv, "cCd:hn:o:p");
+		int c = getopt(argc, argv, "cCd:hn:o:ps:S:");
 		if (c == -1)
 			break;
 		switch (c) {
@@ -1384,7 +1417,7 @@ int main(int argc, char * const argv[])
 		case 'd':
 			start_delay = atoi(optarg);
 			if (start_delay < 0) {
-				fprintf(stderr, "Start delay must be 0 or more seconds\n");
+				fprintf(stderr, "Start delay must be 0 or more seconds.\n");
 				goto out;
 			}
 			break;
@@ -1403,6 +1436,20 @@ int main(int argc, char * const argv[])
 			break;
 		case 'p':
 			opt_flags |= OPT_PROGRESS;
+			break;
+		case 's':
+			samples_cpu = atoi(optarg);
+			if ((samples_cpu < 2.0) || (samples_cpu > MAX_CPU_LOAD)) {
+				fprintf(stderr, "Samples for CPU measurements out of range.\n");
+				goto out;
+			}
+			break;
+		case 'S':
+			samples_ctxt = atoi(optarg);
+			if ((samples_ctxt < 1.0) || (samples_ctxt > CTXT_SAMPLES)) {
+				fprintf(stderr, "Samples for CPU measurements out of range.\n");
+				goto out;
+			}
 			break;
 		}
 	}
