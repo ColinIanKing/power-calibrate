@@ -58,6 +58,7 @@
 
 #define OPT_CPU_LOAD		(0x00000001)
 #define OPT_CTXT_LOAD		(0x00000002)
+#define OPT_PROGRESS		(0x00000004)
 
 #define CPU_USER		(0)
 #define CPU_NICE		(1)
@@ -217,7 +218,7 @@ static inline double timeval_to_double(const struct timeval *tv)
 
 /*
  *  stress_cpu()
- *	stress CPU 
+ *	stress CPU
  */
 static void stress_cpu(const uint64_t cpu_load)
 {
@@ -268,7 +269,7 @@ static void stress_cpu(const uint64_t cpu_load)
 	exit(EXIT_SUCCESS);
 }
 
-/* 
+/*
  *  stress_ctxt
  *	generate context switches by periodic wakeups
  */
@@ -858,7 +859,7 @@ static int power_rate_get_proc_acpi(
 		(void)fclose(file);
 
 		/*
-		 * Some HP firmware is broken and has an undefined 
+		 * Some HP firmware is broken and has an undefined
 		 * 'present voltage' field and instead returns this in
 		 * the design_voltage field, so work around this.
 		 */
@@ -948,7 +949,7 @@ static inline bool not_discharging(void)
 {
 	double power, voltage, current;
 	bool discharging, inaccurate;
-	
+
 	return power_rate_get(&power, &voltage, &current, &discharging, &inaccurate) < 0;
 }
 
@@ -960,6 +961,8 @@ static int monitor(
 	const int start_delay,
 	const int max_readings,
 	const char *test,
+	double percent_each,
+	double percent,
 	double *busy,
 	double *ctxt,
 	double *power,
@@ -971,9 +974,15 @@ static int monitor(
 	bool discharging, dummy_inaccurate;
 	double dummy_power, dummy_voltage, dummy_current;
 
+
 	if (start_delay > 0) {
 		/* Gather up initial data */
 		for (i = 0; i < start_delay; i++) {
+			if (opt_flags & OPT_PROGRESS) {
+				fprintf(stdout, "%s: test calibrating %5.1f%%..\r",
+					test, 100.0 * i / start_delay);
+				fflush(stdout);
+			}
 			if (power_rate_get(&dummy_power, &dummy_voltage, &dummy_current,
 					   &discharging, &dummy_inaccurate) < 0)
 				return -1;
@@ -1009,6 +1018,13 @@ static int monitor(
 		suseconds_t usec;
 		struct timeval tv;
 
+		if (opt_flags & OPT_PROGRESS) {
+			double progress = readings * 100.0 / max_readings;
+			fprintf(stdout, "%s: test progress %5.1f%% (total progress %6.2f%%)\r",
+				test, progress, (progress * percent_each / 100.0) + percent);
+			fflush(stdout);
+		}
+
 		if (gettimeofday(&t2, NULL) < 0) {
 			fprintf(stderr, "gettimeofday failed: errno=%d (%s).\n",
 				errno, strerror(errno));
@@ -1020,6 +1036,7 @@ static int monitor(
 			goto sample_now;
 		tv.tv_sec = usec / 1000000;
 		tv.tv_usec = usec % 1000000;
+
 
 		ret = select(0, NULL, NULL, NULL, &tv);
 		if (ret < 0) {
@@ -1096,7 +1113,7 @@ sample_now:
 
 /*
  *  calc_trend()
- *	calculate linear trendline - compute gradient, y intercept and 
+ *	calculate linear trendline - compute gradient, y intercept and
  *	coefficient of determination.
  */
 static void calc_trend(
@@ -1122,18 +1139,18 @@ static void calc_trend(
 	}
 
 	/*
-	 * Coefficient of determination R^2, 
+	 * Coefficient of determination R^2,
 	 * http://mathbits.com/MathBits/TISection/Statistics2/correlation.htm
 	 */
 	r  = (((double)n * sum_xy) - (sum_x * sum_y)) /
-	      (sqrt(((double)n * sum_x2) - (sum_x * sum_x)) * 
+	      (sqrt(((double)n * sum_x2) - (sum_x * sum_x)) *
 	       sqrt(((double)n * sum_y2) - (sum_y * sum_y)));
 	*r2 = r * r;
 
 	/*
 	 *  Regression Equation(y) = a + bx
          *  Slope = (NΣXY - (ΣX)(ΣY)) / (NΣX2 - (ΣX)2)
- 	 *  Intercept = (ΣY - b(ΣX)) / N 
+ 	 *  Intercept = (ΣY - b(ΣX)) / N
 	 */
 	a *= (double)n;
 	b = sum_x * sum_y;
@@ -1164,7 +1181,7 @@ static void show_help(char *const argv[])
 
 /*
  *  coefficient_r2()
- *	give some idea of r2 
+ *	give some idea of r2
  */
 static const char *coefficient_r2(const double r2)
 {
@@ -1219,7 +1236,7 @@ static void dump_json_misc(FILE *fp)
 	} else {
 		localtime_r(&now, &tm);
 	}
-	
+
 	memset(&buf, 0, sizeof(struct utsname));
 	uname(&buf);
 
@@ -1234,7 +1251,7 @@ static void dump_json_misc(FILE *fp)
 	fprintf(fp, "      \"machine\":\"%s\"\n", buf.machine);
 	fprintf(fp, "    }\n");
 }
- 
+
 
 /*
  *  monitor_cpu_load()
@@ -1260,11 +1277,13 @@ static int monitor_cpu_load(
 			double dummy, voltage;
 			int cpu_load = (i + 1) * 10;
 			int ret;
+			double percent_each = 100.0 / (MAX_CPU_LOAD * num_cpus);
+			double percent = n * percent_each;
 
 			snprintf(buffer, sizeof(buffer), "%d%% x %d", cpu_load, cpus);
 			start_load(pids, cpus, stress_cpu, (uint64_t)cpu_load);
-			
-    			ret = monitor(start_delay, max_readings, buffer, &tuple->x, &dummy, &tuple->y, &voltage);
+
+    			ret = monitor(start_delay, max_readings, buffer, percent_each, percent, &tuple->x, &dummy, &tuple->y, &voltage);
 			stop_load(pids, cpus);
 			if (ret < 0)
 				return -1;
@@ -1311,11 +1330,13 @@ static int monitor_ctxt_load(
 		int ret;
 		double dummy, voltage;
 		uint64_t delay = 1000000 / (10 * (i + 1));
+		double percent_each = 100.0 / CTXT_SAMPLES;
+		double percent = i * percent_each;
 
 		snprintf(buffer, sizeof(buffer), "%d", 10 * (i + 1));
-		
+
 		start_load(pids, 1, stress_ctxt, delay);
-    		ret = monitor(start_delay, max_readings, buffer, &dummy, &tuple->x, &tuple->y, &voltage);
+    		ret = monitor(start_delay, max_readings, buffer, percent_each, percent, &dummy, &tuple->x, &tuple->y, &voltage);
 		stop_load(pids, 1);
 		if (ret < 0)
 			return -1;
@@ -1350,7 +1371,7 @@ int main(int argc, char * const argv[])
 	num_cpus = sysconf(_SC_NPROCESSORS_CONF);
 
 	for (;;) {
-		int c = getopt(argc, argv, "cCd:hn:o:");
+		int c = getopt(argc, argv, "cCd:hn:o:p");
 		if (c == -1)
 			break;
 		switch (c) {
@@ -1379,6 +1400,9 @@ int main(int argc, char * const argv[])
 			break;
 		case 'o':
 			filename = optarg;
+			break;
+		case 'p':
+			opt_flags |= OPT_PROGRESS;
 			break;
 		}
 	}
