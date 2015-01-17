@@ -1424,6 +1424,11 @@ int main(int argc, char * const argv[])
 	struct sigaction new_action;
 
 	num_cpus = sysconf(_SC_NPROCESSORS_CONF);
+	if (num_cpus < 0) {
+		fprintf(stderr, "Cannot determine number of CPUs, errno=%d (%s).\n",
+			errno, strerror(errno));
+		goto out;
+	}
 
 	for (;;) {
 		int c = getopt(argc, argv, "cCd:hn:o:ps:S:r:");
