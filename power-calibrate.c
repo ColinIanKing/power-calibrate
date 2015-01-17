@@ -190,6 +190,45 @@ typedef void (*func)(uint64_t param);
 #endif
 
 /*
+ *  timeval_to_double
+ *	timeval to a double (in seconds)
+ */
+static inline double timeval_to_double(const struct timeval *const tv)
+{
+	return (double)tv->tv_sec + ((double)tv->tv_usec / 1000000.0);
+}
+
+/*
+ *  double_to_timeval
+ *	seconds in double to timeval
+ */
+static inline struct timeval double_to_timeval(const double val)
+{
+	struct timeval tv;
+
+	tv.tv_sec = val;
+	tv.tv_usec = (val - (time_t)val) * 1000000.0;
+
+	return tv;
+}
+
+/*
+ *  gettime_to_double()
+ *	get time as a double
+ */
+static double gettime_to_double(void)
+{
+	struct timeval tv;
+
+        if (gettimeofday(&tv, NULL) < 0) {
+                fprintf(stderr, "gettimeofday failed: errno=%d (%s).\n",
+                        errno, strerror(errno));
+		return -1.0;
+        }
+        return timeval_to_double(&tv);
+}
+
+/*
  *  mwc()
  *      fast pseudo random number generator, see
  *      http://www.cse.yorku.ca/~oz/marsaglia-rng.html
@@ -211,15 +250,6 @@ static void handle_sig(int dummy)
 {
 	(void)dummy;
 	stop_recv = 1;
-}
-
-/*
- *  timeval_to_double()
- *      convert timeval to seconds as a double
- */
-static inline double timeval_to_double(const struct timeval *tv)
-{
-	return (double)tv->tv_sec + ((double)tv->tv_usec / 1000000.0);
 }
 
 /*
@@ -274,10 +304,10 @@ static void stress_cpu(const uint64_t cpu_load)
 	 */
 	for (;;) {
 		int i;
-		double t, delay;
-		struct timeval tv1, tv2;
+		double time_start, delay;
+		struct timeval tv;
 
-		(void)gettimeofday(&tv1, NULL);
+		time_start = gettime_to_double();
 		for (i = 0; i < 1000000; i++) {
 #if __GNUC__
 			/* Stop optimising out */
@@ -285,14 +315,11 @@ static void stress_cpu(const uint64_t cpu_load)
 #endif
 			mwc();
 		}
-		(void)gettimeofday(&tv2, NULL);
-		t = timeval_to_double(&tv2) - timeval_to_double(&tv1);
+		delay = gettime_to_double() - time_start;
 		/* Must not calculate this with zero % load */
-		delay = t * (((100.0 / (double) cpu_load)) - 1.0);
-
-		tv1.tv_sec = delay;
-		tv1.tv_usec = (delay - tv1.tv_sec) * 1000000.0;
-		select(0, NULL, NULL, NULL, &tv1);
+		delay *= (((100.0 / (double) cpu_load)) - 1.0);
+		tv = double_to_timeval(delay);
+		select(0, NULL, NULL, NULL, &tv);
 	}
 	exit(EXIT_SUCCESS);
 }
@@ -454,10 +481,10 @@ static char *file_get(const char *const file)
 }
 
 /*
- *  time_now()
+ *  get_time()
  *	Gather current time in buffer
  */
-static void time_now(char *const buffer, const size_t buflen)
+static void get_time(char *const buffer, const size_t buflen)
 {
 	struct tm tm;
 	time_t now;
@@ -506,30 +533,36 @@ static int stats_read(stats_t *const info)
 {
 	FILE *fp;
 	char buf[4096];
+	int mask = 0;
 
 	if ((fp = fopen("/proc/stat", "r")) == NULL)
 		return -1;
 
 	while (fgets(buf, sizeof(buf), fp) != NULL) {
 		if (strncmp(buf, "cpu ", 4) == 0)
-			sscanf(buf, "%*s %15lf %15lf %15lf %15lf %15lf %15lf %15lf",
-				&(info->value[CPU_USER]),
-				&(info->value[CPU_NICE]),
-				&(info->value[CPU_SYS]),
-				&(info->value[CPU_IDLE]),
-				&(info->value[CPU_IOWAIT]),
-				&(info->value[CPU_IRQ]),
-				&(info->value[CPU_SOFTIRQ]));
+			if (sscanf(buf, "%*s %15lf %15lf %15lf %15lf %15lf %15lf %15lf",
+			    &(info->value[CPU_USER]), &(info->value[CPU_NICE]),
+			    &(info->value[CPU_SYS]), &(info->value[CPU_IDLE]),
+			    &(info->value[CPU_IOWAIT]), &(info->value[CPU_IRQ]),
+			    &(info->value[CPU_SOFTIRQ])) == 7)
+				mask |= 0x01;
 		if (strncmp(buf, "ctxt ", 5) == 0)
-			sscanf(buf, "%*s %15lf", &(info->value[CPU_CTXT]));
+			if (sscanf(buf, "%*s %15lf", &(info->value[CPU_CTXT])) == 1)
+				mask |= 0x02;
 		if (strncmp(buf, "intr ", 5) == 0)
-			sscanf(buf, "%*s %15lf", &(info->value[CPU_INTR]));
+			if (sscanf(buf, "%*s %15lf", &(info->value[CPU_INTR])) == 1)
+				mask |= 0x04;
 		if (strncmp(buf, "procs_running ", 14) == 0)
-			sscanf(buf, "%*s %15lf", &(info->value[CPU_PROCS_RUN]));
+			if (sscanf(buf, "%*s %15lf", &(info->value[CPU_PROCS_RUN])) == 1)
+				mask |= 0x08;
 		if (strncmp(buf, "procs_blocked ", 14) == 0)
-			sscanf(buf, "%*s %15lf", &(info->value[CPU_PROCS_BLK]));
+			if (sscanf(buf, "%*s %15lf", &(info->value[CPU_PROCS_BLK])) == 1)
+				mask |= 0x10;
 	}
 	(void)fclose(fp);
+
+	if (mask != 0x1f)
+		return -1;
 
 	return 0;
 }
@@ -999,11 +1032,11 @@ static int monitor(
 	double *voltage)
 {
 	int readings = 0, i;
+	int64_t t = 1;
 	stats_t *stats, s1, s2, average, stddev;
-	struct timeval t1, t2;
 	bool discharging, dummy_inaccurate;
 	double dummy_power, dummy_voltage, dummy_current;
-
+	double time_start;
 
 	if (start_delay > 0) {
 		/* Gather up initial data */
@@ -1035,18 +1068,24 @@ static int monitor(
 	stats_clear(&average);
 	stats_clear(&stddev);
 
-	if (gettimeofday(&t1, NULL) < 0) {
-		fprintf(stderr, "gettimeofday failed: errno=%d (%s).\n",
-			errno, strerror(errno));
+	if ((time_start = gettime_to_double()) < 0.0) {
 		free(stats);
 		return -1;
 	}
-	stats_read(&s1);
+	if (stats_read(&s1) < 0) {
+		free(stats);
+		return -1;
+	}
 
 	while (!stop_recv && (readings < max_readings)) {
-		int ret;
-		suseconds_t usec;
+		int ret = 0;
+		double secs, time_now;
 		struct timeval tv;
+
+		if ((time_now = gettime_to_double()) < 0.0) {
+			free(stats);
+			return -1;
+		}
 
 		if (opt_flags & OPT_PROGRESS) {
 			double progress = readings * 100.0 / max_readings;
@@ -1055,18 +1094,10 @@ static int monitor(
 			fflush(stdout);
 		}
 
-		if (gettimeofday(&t2, NULL) < 0) {
-			fprintf(stderr, "gettimeofday failed: errno=%d (%s).\n",
-				errno, strerror(errno));
-			free(stats);
-			return -1;
-		}
-		usec = ((t1.tv_sec + sample_delay - t2.tv_sec) * 1000000) + (t1.tv_usec - t2.tv_usec);
-		if (usec < 0)
+		secs = time_start + ((double)t * sample_delay) - time_now;
+		if (secs < 0.0)
 			goto sample_now;
-		tv.tv_sec = usec / 1000000;
-		tv.tv_usec = usec % 1000000;
-
+		tv = double_to_timeval(secs);
 
 		ret = select(0, NULL, NULL, NULL, &tv);
 		if (ret < 0) {
@@ -1076,31 +1107,24 @@ static int monitor(
 			free(stats);
 			return -1;
 		}
-
+sample_now:
 		/* Time out, so measure some more samples */
 		if (ret == 0) {
 			char tmbuffer[10];
 			bool discharging;
 
-sample_now:
-			time_now(tmbuffer, sizeof(tmbuffer));
-			if (gettimeofday(&t1, NULL) < 0) {
-				fprintf(stderr, "gettimeofday failed: errno=%d (%s).\n",
-					errno, strerror(errno));
+			get_time(tmbuffer, sizeof(tmbuffer));
+			if (stats_read(&s2) < 0) {
 				free(stats);
 				return -1;
 			}
-			stats_read(&s2);
 
 			/*
 			 *  Total ticks was zero, something is broken, so re-sample
 			 */
 			if (!stats_gather(&s1, &s2, &stats[readings])) {
 				stats_clear(&stats[readings]);
-				stats_read(&s1);
-				if (gettimeofday(&t1, NULL) < 0) {
-					fprintf(stderr, "gettimeofday failed: errno=%d (%s).\n",
-						errno, strerror(errno));
+				if (stats_read(&s1) < 0) {
 					free(stats);
 					return -1;
 				}
@@ -1123,7 +1147,7 @@ sample_now:
 
 			readings++;
 			s1 = s2;
-			continue;
+			t++;
 		}
 	}
 
