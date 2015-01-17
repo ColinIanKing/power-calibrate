@@ -1329,7 +1329,7 @@ static int monitor_ctxt_load(
 		char buffer[1024];
 		int ret;
 		double dummy, voltage;
-		uint64_t delay = 1000000 / (10 * (i + 1));
+		uint64_t delay = 1000000 / (25 * (i + 1));
 		double percent_each = 100.0 / CTXT_SAMPLES;
 		double percent = i * percent_each;
 
