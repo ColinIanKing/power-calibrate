@@ -1358,13 +1358,17 @@ static void calc_trend(
 static void show_help(char *const argv[])
 {
 	printf("%s, version %s\n\n", app_name, VERSION);
-	printf("usage: %s [-d secs] [-c|-h|-C|-o jsonfile]\n", argv[0]);
-	printf("\t-c calibrate CPU power usage\n");
-	printf("\t-C calibrate context switch power usage\n");
-	printf("\t-d specify delay before starting, default is %d seconds\n", START_DELAY);
-	printf("\t-h show help\n");
-	printf("\t-n specify number of CPUs\n");
-	printf("\t-o jsonfile - output results into json formatted file\n");
+	printf("usage: %s [options]\n", argv[0]);
+	printf(" -c       calibrate CPU power usage\n");
+	printf(" -C       calibrate context switch power usage\n");
+	printf(" -d secs  specify delay before starting, default is %d seconds\n", START_DELAY);
+	printf(" -h show  help\n");
+	printf(" -n cpus  specify number of CPUs\n");
+	printf(" -o file  output results into json formatted file\n");
+	printf(" -p       show progress\n");
+	printf(" -r secs  specify run duration in seconds of each test cycle\n");
+	printf(" -s num   number of samples (tests) per CPU for CPU calibration\n");
+	printf(" -S num   number of samples (tests) per CPU for context switch calibration\n");
 }
 
 /*
