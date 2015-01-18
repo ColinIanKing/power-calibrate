@@ -1,3 +1,12 @@
+power-calibrate (0.01.08-1) unstable; urgency=medium
+
+  * Bump makefile version
+  * Update copyright information
+  * Add scripts to make dist
+  * Remove scripts/foo, this was not meant to be checked in
+
+ -- Colin King <colin.king@canonical.com>  Sun, 18 Jan 2015 20:43:12 +0000
+
 power-calibrate (0.01.07-1) unstable; urgency=medium
 
   * Makefile: bump version
