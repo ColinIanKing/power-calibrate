@@ -1460,7 +1460,7 @@ static int monitor_ctxt_load(
 
 	calc_trend(tuples, samples_ctxt, &gradient, &intercept, &r2);
 	printf("\n");
-	printf("Power (Watts) = (Context Switches * %f) + %f\n",
+	printf("Power (Watts) = (context switches * %f) + %f\n",
 		gradient, intercept);
 	printf("1 context switch is about %f %s (about %f mA @ %.3f V)\n",
 			(gradient < 1.0) ? gradient * 1000.0 : gradient,
@@ -1543,7 +1543,7 @@ int main(int argc, char * const argv[])
 		case 'S':
 			samples_ctxt = atoi(optarg);
 			if ((samples_ctxt < 3.0) || (samples_ctxt > CTXT_SAMPLES)) {
-				fprintf(stderr, "Samples for CPU measurements out of range.\n");
+				fprintf(stderr, "Samples for context switches out of range.\n");
 				goto out;
 			}
 			break;
