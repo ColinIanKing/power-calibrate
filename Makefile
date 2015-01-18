@@ -2,7 +2,7 @@ VERSION=0.01.06
 
 CFLAGS += -Wall -Wextra -DVERSION='"$(VERSION)"'
 
-BINDIR=/usr/bin
+BINDIR=/usr/sbin
 MANDIR=/usr/share/man/man8
 
 power-calibrate: power-calibrate.o
