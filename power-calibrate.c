@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 Canonical
+ * Copyright (C) 2014-2015 Canonical
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -16,6 +16,9 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
  * Author: Colin Ian King <colin.king@canonical.com>
+ *
+ * Much of this code was derived from other GPL-2+ projects by the author
+ * such as powerstat and fnotifysta.
  */
 #define _GNU_SOURCE
 
