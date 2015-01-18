@@ -1388,7 +1388,8 @@ static int monitor_cpu_load(
 			snprintf(buffer, sizeof(buffer), "%d%% x %d", cpu_load, cpus);
 			start_load(pids, cpus, stress_cpu, (uint64_t)cpu_load);
 
-    			ret = monitor(start_delay, max_readings, buffer, percent_each, percent, &tuple->x, &dummy, &tuple->y, &voltage);
+			ret = monitor(start_delay, max_readings, buffer, percent_each, percent,
+				&tuple->x, &dummy, &tuple->y, &voltage);
 			stop_load(pids, cpus);
 			if (stop_flag || (ret < 0))
 				return -1;
@@ -1403,8 +1404,10 @@ static int monitor_cpu_load(
 	printf("\n");
 	printf("Power (Watts) = (%% CPU load * %f) + %f\n",
 		gradient, intercept);
-	printf("1%% CPU load is about %f Watts (about %f mA @ %.3f V)\n",
-			gradient, 1000.0 * gradient / average_voltage,
+	printf("1%% CPU load is about %f %s (about %f mA @ %.3f V)\n",
+			(gradient < 1.0) ? gradient * 1000.0 : gradient,
+			(gradient < 1.0) ? "Milliwatts" : "Watts",
+			1000.0 * gradient / average_voltage,
 			average_voltage);
 	printf("Coefficient of determination R^2 = %f (%s)\n", r2,
 		coefficient_r2(r2));
@@ -1429,7 +1432,7 @@ static int monitor_ctxt_load(
 	tuple_t	*tuple = tuples;
 	double gradient, intercept, r2;
 	double average_voltage = 0.0;
-	double scale = 500.0 / samples_ctxt;
+	double scale = 1000.0 / (samples_ctxt - 1);
 
 	stats_headings("Wakeups");
 	for (i = 0; i < samples_ctxt; i++) {
@@ -1437,14 +1440,15 @@ static int monitor_ctxt_load(
 		char buffer[1024];
 		int ret;
 		double dummy, voltage;
-		uint64_t delay = 1000000 / (scale * (i + 1));
-		double percent_each = 100.0 / CTXT_SAMPLES;
+		uint64_t delay = (i > 0) ? 1000000 / (scale * i) : 1000000 * 60;
+		double percent_each = 100.0 / samples_ctxt;
 		double percent = i * percent_each;
 
-		snprintf(buffer, sizeof(buffer), "%d", 10 * (i + 1));
+		snprintf(buffer, sizeof(buffer), "%.1f", scale * i);
 
 		start_load(pids, 1, stress_ctxt, delay);
-    		ret = monitor(start_delay, max_readings, buffer, percent_each, percent, &dummy, &tuple->x, &tuple->y, &voltage);
+		ret = monitor(start_delay, max_readings, buffer, percent_each, percent,
+			&dummy, &tuple->x, &tuple->y, &voltage);
 		stop_load(pids, 1);
 		if (stop_flag || (ret < 0))
 			return -1;
@@ -1454,11 +1458,15 @@ static int monitor_ctxt_load(
 	}
 	average_voltage /= n;
 
-	calc_trend(tuples, CTXT_SAMPLES, &gradient, &intercept, &r2);
+	calc_trend(tuples, samples_ctxt, &gradient, &intercept, &r2);
 	printf("\n");
 	printf("Power (Watts) = (Context Switches * %f) + %f\n",
 		gradient, intercept);
-	printf("1 Context Switch is about %f Watts (about %f mA)\n", gradient, 1000.0 * gradient / average_voltage);
+	printf("1 context switch is about %f %s (about %f mA @ %.3f V)\n",
+			(gradient < 1.0) ? gradient * 1000.0 : gradient,
+			(gradient < 1.0) ? "Milliwatts" : "Watts",
+			1000.0 * gradient / average_voltage,
+			average_voltage);
 	printf("Coefficient of determination R^2 = %f (%s)\n", r2,
 		coefficient_r2(r2));
 	printf("\n");
@@ -1527,14 +1535,14 @@ int main(int argc, char * const argv[])
 			break;
 		case 's':
 			samples_cpu = atoi(optarg);
-			if ((samples_cpu < 2.0) || (samples_cpu > MAX_CPU_LOAD)) {
+			if ((samples_cpu < 3.0) || (samples_cpu > MAX_CPU_LOAD)) {
 				fprintf(stderr, "Samples for CPU measurements out of range.\n");
 				goto out;
 			}
 			break;
 		case 'S':
 			samples_ctxt = atoi(optarg);
-			if ((samples_ctxt < 1.0) || (samples_ctxt > CTXT_SAMPLES)) {
+			if ((samples_ctxt < 3.0) || (samples_ctxt > CTXT_SAMPLES)) {
 				fprintf(stderr, "Samples for CPU measurements out of range.\n");
 				goto out;
 			}
