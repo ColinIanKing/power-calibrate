@@ -401,7 +401,8 @@ static void stress_ctxt(
 	int pipefds[2];
 
 	if (pipe(pipefds) < 0) {
-		fprintf(stderr, "stress_ctxt: pipe failed, errno=%d [%d]\n", errno, getpid());
+		fprintf(stderr, "stress_ctxt: pipe failed, errno=%d (%s).\n",
+			errno, strerror(errno));
 		exit(EXIT_FAILURE);
 	}
 
@@ -435,7 +436,8 @@ static void stress_ctxt(
 
 		while (!stop_flag) {
 			if (write(pipefds[1],  &ch, sizeof(ch)) < 0) {
-				fprintf(stderr, "stress_ctxt: write failed, errno=%d [%d]\n", errno, getpid());
+				fprintf(stderr, "stress_ctxt: write failed, errno=%d (%s).\n",
+					errno, strerror(errno));
 				break;
 			}
 			struct timeval tv;
@@ -446,7 +448,8 @@ static void stress_ctxt(
 
 		ch = CTXT_STOP;
 		if (write(pipefds[1],  &ch, sizeof(ch)) <= 0)
-			fprintf(stderr, "stress_ctxt: termination write failed, errno=%d [%d]\n", errno, getpid());
+			fprintf(stderr, "stress_ctxt: termination write failed, errno=%d %s\n",
+				errno, strerror(errno));
 		kill(pid, SIGKILL);
 	}
 	exit(EXIT_SUCCESS);
@@ -507,7 +510,8 @@ void start_load(
 
 		switch (pid) {
 		case -1:
-			fprintf(stderr, "Cannot fork\n");
+			fprintf(stderr, "Cannot fork, errno=%d (%s)\n",
+				errno, strerror(errno));
 			stop_load(pids, n_procs);
 			exit(EXIT_FAILURE);
 		case 0:
@@ -861,7 +865,8 @@ static int power_rate_get_sys_fs(
 	*inaccurate = true;
 
 	if ((dir = opendir(SYS_CLASS_POWER_SUPPLY)) == NULL) {
-		fprintf(stderr, "Machine does not have %s, cannot run the test.\n", SYS_CLASS_POWER_SUPPLY);
+		fprintf(stderr, "Machine does not have %s, cannot run the test.\n",
+			SYS_CLASS_POWER_SUPPLY);
 		return -1;
 	}
 
@@ -874,7 +879,8 @@ static int power_rate_get_sys_fs(
 			FILE *fp;
 
 			/* Check that type field matches the expected type */
-			snprintf(path, sizeof(path), "%s/%s/type", SYS_CLASS_POWER_SUPPLY, dirent->d_name);
+			snprintf(path, sizeof(path), "%s/%s/type",
+				SYS_CLASS_POWER_SUPPLY, dirent->d_name);
 			if ((data = file_get(path)) != NULL) {
 				bool mismatch = (strstr(data, "Battery") == NULL);
 				free(data);
@@ -883,9 +889,11 @@ static int power_rate_get_sys_fs(
 			} else
 				continue;		/* can't check type, skip this entry */
 
-			snprintf(path, sizeof(path), "%s/%s/uevent", SYS_CLASS_POWER_SUPPLY, dirent->d_name);
+			snprintf(path, sizeof(path), "%s/%s/uevent",
+				SYS_CLASS_POWER_SUPPLY, dirent->d_name);
 			if ((fp = fopen(path, "r")) == NULL) {
-				fprintf(stderr, "Battery %s present but under supported - no state present.", dirent->d_name);
+				fprintf(stderr, "Battery %s present but under supported - "
+					"no state present.", dirent->d_name);
 				(void)closedir(dir);
 				return -1;
 			} else {
@@ -979,7 +987,8 @@ static int power_rate_get_proc_acpi(
 	*inaccurate = true;
 
 	if ((dir = opendir(PROC_ACPI_BATTERY)) == NULL) {
-		fprintf(stderr, "Machine does not have %s, cannot run the test.\n", PROC_ACPI_BATTERY);
+		fprintf(stderr, "Machine does not have %s, cannot run the test.\n",
+			PROC_ACPI_BATTERY);
 		return -1;
 	}
 
@@ -1206,7 +1215,8 @@ static int monitor(
 		if (ret < 0) {
 			if (errno == EINTR)
 				break;
-			fprintf(stderr,"select: %s\n", strerror(errno));
+			fprintf(stderr,"select failed: errno=%d (%s).\n",
+				errno, strerror(errno));
 			free(stats);
 			return -1;
 		}
@@ -1625,7 +1635,8 @@ int main(int argc, char * const argv[])
 		case 'r':
 			opt_run_duration = atoi(optarg);
 			if (opt_run_duration < MIN_RUN_DURATION) {
-				fprintf(stderr, "Minimum run duration must be %d seconds or more\n", MIN_RUN_DURATION);
+				fprintf(stderr, "Minimum run duration must be %d seconds or more\n",
+					MIN_RUN_DURATION);
 				goto out;
 			}
 			break;
@@ -1657,14 +1668,15 @@ int main(int argc, char * const argv[])
 	if (optind < argc) {
 		sample_delay = atoi(argv[optind++]);
 		if (sample_delay < 1) {
-			fprintf(stderr, "Sample delay must be >= 1\n");
+			fprintf(stderr, "Sample delay must be >= 1.\n");
 			goto out;
 		}
 	}
 
 	if (filename) {
 		if ((fp = fopen(filename, "w")) == NULL) {
-			fprintf(stderr, "Cannot open json output file '%s'.\n", filename);
+			fprintf(stderr, "Cannot open json output file '%s', errno=%d (%s).\n",
+				filename, errno, strerror(errno));
 			goto out;
 		}
 		fprintf(fp, "{\n  \"%s\":{\n", app_name);
