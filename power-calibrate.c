@@ -1432,7 +1432,7 @@ static int monitor_cpu_load(
 	tuple_t	 tuples_ops[num_cpus * samples_cpu], *tuple_ops = tuples_ops;
 	double gradient, intercept, r2;
 	double average_voltage = 0.0;
-	double scale = MAX_CPU_LOAD / (samples_cpu - 1);
+	double scale = (double)MAX_CPU_LOAD / (samples_cpu - 1);
 	char watts[16], amps[16], volts[16];
 
 	stats_headings("CPU load");
@@ -1461,6 +1461,15 @@ static int monitor_cpu_load(
 			n++;
 			average_voltage += voltage;
 		}
+	}
+	/* Keep static analysis happy */
+	if (n <= 0) {
+		printf("\nZero samples, cannot compute statistics.\n");
+		return -1;
+	}
+	if (average_voltage == 0) {
+		printf("\nAverage voltage was zero, cannot compute statistics.\n");
+		return -1;
 	}
 	average_voltage /= n;
 
@@ -1534,6 +1543,15 @@ static int monitor_ctxt_load(
 		tuple_ops++;
 		n++;
 		average_voltage += voltage;
+	}
+	/* Keep static analysis happy */
+	if (n <= 0) {
+		printf("\nZero samples, cannot compute statistics.\n");
+		return -1;
+	}
+	if (average_voltage == 0) {
+		printf("\nAverage voltage was zero, cannot compute statistics.\n");
+		return -1;
 	}
 	average_voltage /= n;
 
