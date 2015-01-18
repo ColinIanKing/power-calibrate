@@ -49,10 +49,10 @@
 #include <sys/wait.h>
 #include <sys/utsname.h>
 
-#define MIN_RUN_DURATION	(30)		/* We recommend a run of 2 minute pers sample */
+#define MIN_RUN_DURATION	(10)		/* We recommend a run of 2 minute pers sample */
 #define DEFAULT_RUN_DURATION	(120)
 #define SAMPLE_DELAY		(1)		/* Delay between samples in seconds */
-#define START_DELAY		(15)		/* Delay to wait before sampling */
+#define START_DELAY		(0)		/* Delay to wait before sampling */
 #define	RATE_ZERO_LIMIT		(0.001)		/* Less than this we call the power rate zero */
 #define	CTXT_SAMPLES		(20)
 #define MAX_CPU_LOAD		(100)
@@ -80,7 +80,8 @@
 #define PROC_FORK		(14)
 #define PROC_EXEC		(15)
 #define PROC_EXIT		(16)
-#define MAX_VALUES		(17)
+#define BOGO_OPS		(17)
+#define MAX_VALUES		(18)
 
 #define MWC_SEED_Z		(362436069ULL)
 #define MWC_SEED_W		(521288629ULL)
@@ -113,13 +114,16 @@ typedef struct {
 	double	y;
 } tuple_t;
 
-static int sample_delay   = SAMPLE_DELAY;	/* time between each sample in secs */
+typedef void (*func)(uint64_t param, const uint32_t instance, uint64_t *bogo_ops);
+
+static int32_t sample_delay   = SAMPLE_DELAY;	/* time between each sample in secs */
 static volatile bool stop_flag;			/* sighandler stop flag */
-static int num_cpus;				/* number of CPUs */
-static int opt_flags;				/* command options */
-static int samples_cpu = 10.0;
-static int samples_ctxt = CTXT_SAMPLES;
+static int32_t num_cpus;				/* number of CPUs */
+static int32_t opt_flags;				/* command options */
+static int32_t samples_cpu = 10.0;
+static int32_t samples_ctxt = CTXT_SAMPLES;
 static char *app_name = "power-calibrate";
+static uint64_t *bogo_ops;
 
 /*
  *  Attempt to catch a range of signals so
@@ -180,7 +184,56 @@ static const int signals[] = {
 	-1,
 };
 
-typedef void (*func)(uint64_t param);
+
+/*
+ *  units_to_str()
+ *	units to strings
+ */
+static char *units_to_str(
+	const double val,
+	char *units,
+	char *const buf,
+	const size_t buflen)
+{
+	double v = (double)val;
+	static const char *scales[] = {
+		"",
+		"m",
+		"µ",
+		"n",
+		"p",
+		"f",
+		NULL
+	};
+	size_t i;
+
+	for (i = 0; i < 6; i++, v *= 1000) {
+		if (v > 0.5)
+			break;
+	}
+	snprintf(buf, buflen, "%.2f %s%s", v, scales[i], units);
+	return buf;
+}
+/*
+ *  uint64_to_str()
+ *	uint64_t values to strings
+ */
+static char *uint64_to_str(
+	const uint64_t val,
+	char *const buf,
+	const size_t buflen)
+{
+	double v = (double)val;
+	static const char scales[] = " KMB";
+	size_t i;
+
+	for (i = 0; i < sizeof(scales) - 1; i++, v /= 1000) {
+		if (v <= 500)
+			break;
+	}
+	snprintf(buf, buflen, "%5.1f%c", v, scales[i]);
+	return buf;
+}
 
 /*
  *  timeval_to_double
@@ -262,8 +315,12 @@ void set_affinity(int cpu)
  *  stress_cpu()
  *	stress CPU
  */
-static void stress_cpu(const uint64_t cpu_load)
+static void stress_cpu(
+	const uint64_t cpu_load,
+	const uint32_t instance,
+	uint64_t *bogo_ops)
 {
+	uint64_t ops = 0;
 	/*
 	 * Normal use case, 100% load, simple spinning on CPU
 	 */
@@ -276,9 +333,11 @@ static void stress_cpu(const uint64_t cpu_load)
 				__asm__ __volatile__("");
 #endif
 				mwc();
+				ops++;
 				if (stop_flag)
 					exit(EXIT_SUCCESS);
 			}
+			bogo_ops[instance] = ops;
 		}
 		exit(EXIT_SUCCESS);
 	}
@@ -309,9 +368,11 @@ static void stress_cpu(const uint64_t cpu_load)
 			__asm__ __volatile__("");
 #endif
 			mwc();
+			ops++;
 			if (stop_flag)
 				exit(EXIT_SUCCESS);
 		}
+		bogo_ops[instance] = ops;
 		delay = gettime_to_double() - time_start;
 		/* Must not calculate this with zero % load */
 		delay *= (((100.0 / (double) cpu_load)) - 1.0);
@@ -325,7 +386,10 @@ static void stress_cpu(const uint64_t cpu_load)
  *  stress_ctxt
  *	generate context switches by periodic wakeups
  */
-static void stress_ctxt(const uint64_t delay)
+static void stress_ctxt(
+	const uint64_t delay,
+	const uint32_t instance,
+	uint64_t *bogo_ops)
 {
 	pid_t pid;
 	int pipefds[2];
@@ -350,6 +414,7 @@ static void stress_ctxt(const uint64_t delay)
 			for (;;) {
 				if (read(pipefds[0], &ch, sizeof(ch)) <= 0)
 					break;	/* happens on pipe breakage */
+				bogo_ops[instance]++;
 				if (stop_flag || (ch == CTXT_STOP))
 					break;
 			}
@@ -409,11 +474,12 @@ static void stop_load(const pid_t *pids, const int32_t total_procs)
  */
 void start_load(
 	pid_t *pids,
-	const int32_t total_procs,
+	const uint32_t total_procs,
 	const func load_func,
-	const uint64_t param)
+	const uint64_t param,
+	uint64_t *bogo_ops)
 {
-	int32_t n_procs;
+	uint32_t n_procs;
 	int i;
 	struct sigaction new_action;
 
@@ -444,7 +510,7 @@ void start_load(
 			for (fd = (getdtablesize() - 1); fd > 2; fd--)
 				(void)close(fd);
 			/* Child */
-			load_func(param);
+			load_func(param, n_procs, bogo_ops);
 			exit(0);
 		default:
 			pids[n_procs] = pid;
@@ -525,7 +591,7 @@ static void stats_clear_all(stats_t *const stats, const int n)
  *  stats_read()
  *	gather pertinent /proc/stat data
  */
-static int stats_read(stats_t *const stats)
+static int stats_read(stats_t *const stats, uint64_t *bogo_ops)
 {
 	FILE *fp;
 	char buf[4096];
@@ -580,6 +646,12 @@ static int stats_read(stats_t *const stats)
 				stats->inaccurate[CPU_PROCS_BLK] = false;
 	}
 	(void)fclose(fp);
+
+	stats->value[BOGO_OPS] = 0;
+	stats->inaccurate[BOGO_OPS] = false;
+	for (i = 0; i < num_cpus; i++) {
+		stats->value[BOGO_OPS] += bogo_ops[i];
+	}
 
 	return 0;
 }
@@ -639,6 +711,7 @@ static bool stats_gather(
 	res->value[CPU_SOFTIRQ] = stats_sane(s1, s2, CPU_SOFTIRQ);
 	res->value[CPU_CTXT]	= stats_sane(s1, s2, CPU_CTXT);
 	res->value[CPU_INTR]	= stats_sane(s1, s2, CPU_INTR);
+	res->value[BOGO_OPS]	= stats_sane(s1, s2, BOGO_OPS);
 
 	for (i = 0; (j = indices[i]) != -1; i++)
 		inaccurate |= (s1->inaccurate[j] | s2->inaccurate[j]);
@@ -662,6 +735,8 @@ static bool stats_gather(
 			NAN : res->value[CPU_CTXT] / sample_delay;
 	res->value[CPU_INTR] = (INACCURATE(s1, s2, CPU_INTR) || (sample_delay <= 0.0)) ?
 			NAN : res->value[CPU_INTR] / sample_delay;
+	res->value[BOGO_OPS] = (INACCURATE(s1, s2, BOGO_OPS) || (sample_delay <= 0.0)) ?
+			NAN : res->value[BOGO_OPS] / sample_delay;
 	res->value[CPU_PROCS_RUN] = s2->inaccurate[CPU_PROCS_RUN] ? NAN : s2->value[CPU_PROCS_RUN];
 	res->value[CPU_PROCS_BLK] = s2->inaccurate[CPU_PROCS_BLK] ? NAN : s2->value[CPU_PROCS_BLK];
 
@@ -674,7 +749,7 @@ static bool stats_gather(
  */
 static void stats_headings(const char *test)
 {
-	printf("%8.8s  User  Nice   Sys  Idle    IO  Run Ctxt/s  IRQ/s  Watts  Volts   Amps\n", test);
+	printf("%8.8s  User   Sys  Idle  Run Ctxt/s  IRQ/s  Ops/s  Watts  Volts   Amps\n", test);
 }
 
 /*
@@ -686,7 +761,7 @@ static void stats_print(
 	const bool summary,
 	const stats_t *const s)
 {
-	char buf[10];
+	char buf[10], str[16];
 	char *fmt;
 
 	if (summary) {
@@ -699,16 +774,16 @@ static void stats_print(
 			s->inaccurate[POWER_NOW] ? "E" : "");
 	}
 
+	uint64_to_str(s->value[BOGO_OPS], str, sizeof(str));
+
 	fmt = summary ?
-		"%8.8s %5.1f %5.1f %5.1f %5.1f %5.1f %4.1f %6.1f %6.1f %s %6.3f %6.3f\n" :
-		"%8.8s %5.1f %5.1f %5.1f %5.1f %5.1f %4.0f %6.0f %6.0f %s %6.3f %6.3f\n";
+		"%8.8s %5.1f %5.1f %5.1f %4.1f %6.1f %6.1f %6s %s %6.3f %6.3f\n" :
+		"%8.8s %5.1f %5.1f %5.1f %4.0f %6.0f %6.0f %6s %s %6.3f %6.3f\n";
 	printf(fmt,
 		prefix,
-		s->value[CPU_USER], s->value[CPU_NICE],
-		s->value[CPU_SYS], s->value[CPU_IDLE],
-		s->value[CPU_IOWAIT], s->value[CPU_PROCS_RUN],
-		s->value[CPU_CTXT], s->value[CPU_INTR],
-		buf,
+		s->value[CPU_USER], s->value[CPU_SYS], s->value[CPU_IDLE],
+		s->value[CPU_PROCS_RUN], s->value[CPU_CTXT], s->value[CPU_INTR],
+		str, buf,
 		s->value[VOLTAGE_NOW], s->value[CURRENT_NOW]);
 }
 
@@ -1074,10 +1149,12 @@ static int monitor(
 	const char *test,
 	double percent_each,
 	double percent,
+	uint64_t *bogo_ops,
 	double *busy,
 	double *ctxt,
 	double *power,
-	double *voltage)
+	double *voltage,
+	double *ops)
 {
 	int readings = 0, i;
 	int64_t t = 1;
@@ -1120,7 +1197,7 @@ static int monitor(
 		free(stats);
 		return -1;
 	}
-	if (stats_read(&s1) < 0) {
+	if (stats_read(&s1, bogo_ops) < 0) {
 		free(stats);
 		return -1;
 	}
@@ -1164,7 +1241,7 @@ sample_now:
 			bool discharging;
 
 			get_time(tmbuffer, sizeof(tmbuffer));
-			if (stats_read(&s2) < 0) {
+			if (stats_read(&s2, bogo_ops) < 0) {
 				free(stats);
 				return -1;
 			}
@@ -1174,7 +1251,7 @@ sample_now:
 			 */
 			if (!stats_gather(&s1, &s2, &stats[readings])) {
 				stats_clear(&stats[readings]);
-				if (stats_read(&s1) < 0) {
+				if (stats_read(&s1, bogo_ops) < 0) {
 					free(stats);
 					return -1;
 				}
@@ -1210,6 +1287,7 @@ sample_now:
 	*ctxt = average.value[CPU_CTXT];
 	*power = average.value[POWER_NOW];
 	*voltage = average.value[VOLTAGE_NOW];
+	*ops = average.value[BOGO_OPS];
 
 	free(stats);
 	return 0;
@@ -1364,20 +1442,22 @@ static void dump_json_misc(FILE *fp)
 static int monitor_cpu_load(
 	FILE *fp,
 	const int start_delay,
-	const int max_readings)
+	const int max_readings,
+	uint64_t *bogo_ops)
 {
-	int cpus, i, n = 0;
-	tuple_t	 tuples[num_cpus * samples_cpu];
-	tuple_t	*tuple = tuples;
+	uint32_t cpus, i, n = 0;
+	tuple_t	 tuples_load[num_cpus * samples_cpu], *tuple_load = tuples_load;
+	tuple_t	 tuples_ops[num_cpus * samples_cpu], *tuple_ops = tuples_ops;
 	double gradient, intercept, r2;
 	double average_voltage = 0.0;
 	double scale = MAX_CPU_LOAD / (samples_cpu - 1);
+	char watts[16], amps[16], volts[16];
 
 	stats_headings("CPU load");
-	for (i = 0; i < samples_cpu; i++) {
+	for (i = 0; i < (uint32_t)samples_cpu; i++) {
 		pid_t pids[num_cpus];
 
-		for (cpus = 1; cpus <= num_cpus; cpus++) {
+		for (cpus = 1; cpus <= (uint32_t)num_cpus; cpus++) {
 			char buffer[1024];
 			double dummy, voltage;
 			int cpu_load = scale * i;
@@ -1386,31 +1466,43 @@ static int monitor_cpu_load(
 			double percent = n * percent_each;
 
 			snprintf(buffer, sizeof(buffer), "%d%% x %d", cpu_load, cpus);
-			start_load(pids, cpus, stress_cpu, (uint64_t)cpu_load);
+			start_load(pids, cpus, stress_cpu, (uint64_t)cpu_load, bogo_ops);
 
-			ret = monitor(start_delay, max_readings, buffer, percent_each, percent,
-				&tuple->x, &dummy, &tuple->y, &voltage);
+			ret = monitor(start_delay, max_readings, buffer, percent_each, percent, bogo_ops,
+				&tuple_load->x, &dummy, &tuple_load->y, &voltage, &tuple_ops->x);
+			tuple_ops->y = tuple_load->y;
 			stop_load(pids, cpus);
 			if (stop_flag || (ret < 0))
 				return -1;
-			tuple++;
+			tuple_load++;
+			tuple_ops++;
 			n++;
 			average_voltage += voltage;
 		}
 	}
 	average_voltage /= n;
 
-	calc_trend(tuples, num_cpus * samples_cpu, &gradient, &intercept, &r2);
+	calc_trend(tuples_load, num_cpus * samples_cpu, &gradient, &intercept, &r2);
+
+	units_to_str(gradient, "W", watts, sizeof(watts));
+	units_to_str(average_voltage, "V", volts, sizeof(volts));
+	units_to_str(gradient / average_voltage, "A", amps, sizeof(amps));
+
 	printf("\n");
-	printf("Power (Watts) = (%% CPU load * %f) + %f\n",
-		gradient, intercept);
-	printf("1%% CPU load is about %f %s (about %f mA @ %.3f V)\n",
-			(gradient < 1.0) ? gradient * 1000.0 : gradient,
-			(gradient < 1.0) ? "Milliwatts" : "Watts",
-			1000.0 * gradient / average_voltage,
-			average_voltage);
-	printf("Coefficient of determination R^2 = %f (%s)\n", r2,
-		coefficient_r2(r2));
+	printf("Power (Watts) = (%% CPU load * %f) + %f\n", gradient, intercept);
+	printf("Each 1%% CPU load is about %s (about %s @ %s)\n", watts, amps, volts);
+	printf("Coefficient of determination R^2 = %f (%s)\n", r2, coefficient_r2(r2));
+	printf("\n");
+
+	calc_trend(tuples_ops, num_cpus * samples_cpu, &gradient, &intercept, &r2);
+
+	units_to_str(gradient, "W", watts, sizeof(watts));
+	units_to_str(average_voltage, "V", volts, sizeof(volts));
+	units_to_str(gradient / average_voltage, "A", amps, sizeof(amps));
+
+	printf("Power (Watts) = (bogo op * %e) + %f\n", gradient, intercept);
+	printf("1 bogo ops is about %s (about %s @ %s)\n", watts, amps, volts);
+	printf("Coefficient of determination R^2 = %f (%s)\n", r2, coefficient_r2(r2));
 	printf("\n");
 
 	dump_json_values(fp, "cpu-load", "one-percent-cpu-load", gradient, r2);
@@ -1425,14 +1517,16 @@ static int monitor_cpu_load(
 static int monitor_ctxt_load(
 	FILE *fp,
 	const int start_delay,
-	const int max_readings)
+	const int max_readings,
+	uint64_t *bogo_ops)
 {
 	int i, n = 0;
-	tuple_t	 tuples[samples_ctxt];
-	tuple_t	*tuple = tuples;
-	double gradient, intercept, r2;
+	tuple_t	 tuples_ctxt[samples_ctxt], *tuple_ctxt = tuples_ctxt;
+	tuple_t	 tuples_ops[num_cpus * samples_cpu], *tuple_ops = tuples_ops;
+	double gradient, intercept, r2, x;
 	double average_voltage = 0.0;
 	double scale = 1000.0 / (samples_ctxt - 1);
+	char watts[16], amps[16], volts[16];
 
 	stats_headings("Wakeups");
 	for (i = 0; i < samples_ctxt; i++) {
@@ -1446,29 +1540,31 @@ static int monitor_ctxt_load(
 
 		snprintf(buffer, sizeof(buffer), "%.1f", scale * i);
 
-		start_load(pids, 1, stress_ctxt, delay);
+		memset(bogo_ops, 0, sizeof(uint64_t) * num_cpus);
+		start_load(pids, 1, stress_ctxt, delay, bogo_ops);
 		ret = monitor(start_delay, max_readings, buffer, percent_each, percent,
-			&dummy, &tuple->x, &tuple->y, &voltage);
+			bogo_ops, &dummy, &x, &tuple_ctxt->y, &voltage, &tuple_ops->y);
+		tuple_ctxt->x = tuple_ops->x = x;
 		stop_load(pids, 1);
 		if (stop_flag || (ret < 0))
 			return -1;
-		tuple++;
+		tuple_ctxt++;
+		tuple_ops++;
 		n++;
 		average_voltage += voltage;
 	}
 	average_voltage /= n;
 
-	calc_trend(tuples, samples_ctxt, &gradient, &intercept, &r2);
+	calc_trend(tuples_ctxt, samples_ctxt, &gradient, &intercept, &r2);
+
+	units_to_str(gradient, "W", watts, sizeof(watts));
+	units_to_str(average_voltage, "V", volts, sizeof(volts));
+	units_to_str(gradient / average_voltage, "A", amps, sizeof(amps));
+
 	printf("\n");
-	printf("Power (Watts) = (context switches * %f) + %f\n",
-		gradient, intercept);
-	printf("1 context switch is about %f %s (about %f mA @ %.3f V)\n",
-			(gradient < 1.0) ? gradient * 1000.0 : gradient,
-			(gradient < 1.0) ? "Milliwatts" : "Watts",
-			1000.0 * gradient / average_voltage,
-			average_voltage);
-	printf("Coefficient of determination R^2 = %f (%s)\n", r2,
-		coefficient_r2(r2));
+	printf("Power (Watts) = (context switches * %f) + %f\n", gradient, intercept);
+	printf("1 context switch is about %s (about %s @ %s)\n", watts, amps, volts);
+	printf("Coefficient of determination R^2 = %f (%s)\n", r2, coefficient_r2(r2));
 	printf("\n");
 
 	dump_json_values(fp, "context-switches", "one-context-switch", gradient, r2);
@@ -1581,28 +1677,39 @@ int main(int argc, char * const argv[])
 		new_action.sa_flags = 0;
 
 		if (sigaction(signals[i], &new_action, NULL) < 0) {
-			fprintf(stderr, "sigaction failed: errno=%d (%s)\n",
+			fprintf(stderr, "sigaction failed: errno=%d (%s).\n",
 				errno, strerror(errno));
 			goto out;
 		}
 		(void)siginterrupt(signals[i], 1);
 	}
 
-	run_duration = opt_run_duration + START_DELAY - start_delay;
+	//run_duration = opt_run_duration + START_DELAY - start_delay;
+	run_duration = opt_run_duration;
 	max_readings = run_duration / sample_delay;
+
+	bogo_ops = mmap(NULL, sizeof(uint64_t) * num_cpus,
+		PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANON, -1, 0);
+	if (bogo_ops == MAP_FAILED) {
+		fprintf(stderr, "mmap failed: errno=%d (%s).\n",
+			errno, strerror(errno));
+		goto out;
+	}
 
 	if (not_discharging())
 		goto out;
 
 	if (opt_flags & OPT_CPU_LOAD)
-		if (monitor_cpu_load(fp, start_delay, max_readings) < 0)
+		if (monitor_cpu_load(fp, start_delay, max_readings, bogo_ops) < 0)
 			goto out;
 	if (opt_flags & OPT_CTXT_LOAD)
-		if (monitor_ctxt_load(fp, start_delay, max_readings) < 0)
+		if (monitor_ctxt_load(fp, start_delay, max_readings, bogo_ops) < 0)
 			goto out;
 
 	ret = EXIT_SUCCESS;
 out:
+	if (bogo_ops)
+		(void)munmap(bogo_ops, sizeof(uint64_t) * num_cpus);
 	if (fp) {
 		dump_json_misc(fp);
 
