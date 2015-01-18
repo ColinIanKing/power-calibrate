@@ -22,12 +22,7 @@ power-calibrate \- a tool to calibrate power consumption.
 
 .SH SYNOPSIS
 .B power-calibrate
-.RI [ \-c ]
-.RI [ \-C ]
-.RI [ \-d " secs]
-.RI [ \-h ]
-.RI [ \-n " cpus]
-.RI [ \-o " file]
+.RI [ options ]
 .br
 
 .SH DESCRIPTION
@@ -41,10 +36,10 @@ power-calibrate options are as follow:
 calibrate CPU power usage. This will run through various CPU utilisation levels across the CPUs on the device and then compute the amount of power consumed for just 1% of CPU utilisation.
 .TP
 .B \-C
-calibrate context switch power usage. This will generate various levels of wakeup events and then compute the amount of power consumed for just 1 context switch. Note that this is not very accurate as this is subject to low correlation between context switches and the lower power consumption of context switches.
+calibrate context switch power usage. This will generate various levels of wakeup events and then compute the amount of power consumed for just 1 context switch.
 .TP
 .B \-d
-specify the delay in seconds from starting a new test configuration and before starting the sampling. The default is 60 seconds, which is normally enough time to allow the battery statistics to settle down during the current test.
+specify the delay in seconds from starting a new test configuration and before starting the sampling. The default is 20 seconds, which is normally enough time to allow the battery statistics to settle down during the current test.
 .TP
 .B \-h
 show help.
@@ -59,13 +54,13 @@ output results into a json formatted file.
 show progress
 .TP
 .B \-r secs
-Set run duration. Normally, the default of 120 seconds is suitable for most laptop devices where discharge rates from the battery can be fairly accurately determined over this durarion.  Setting this to a shorter duration will complete the calibration tests in less time but may be less accurate.
+Set run duration. Normally, the default of 120 seconds is suitable for most laptop devices where discharge rates from the battery can be fairly accurately determined over this duration.  Setting this to a shorter duration will complete the calibration tests in less time but may be less accurate.
 .TP
 .B \-s samples
-specify the number of samples for the CPU (\-c) test. The CPU test will measure 0% to 100% CPU loading across 1..number of CPUs. The number of test rounds to be done per CPU is controlled by the samples value.  If samples is low then less data points are gathered for the calculation of the power utilisation and this leads to less accurate estimations.
+specify the number of samples for the CPU (\-c) test. The CPU test will measure 0% to 100% CPU loading across 1..number of CPUs. The number of test rounds to be done per CPU is controlled by the samples value.  If samples is low then less data points are gathered for the calculation of the power utilisation and this leads to less accurate results.
 .TP
 .B \-S samples
-specify the number of samples for the context switch (\-C) test. The context switch test will measure 0 to 1000 context switches per second across 1..number of CPUs. The number of test rounds to be done per CPU is controlled by the samples value.  If samples is low then less data points are gathered for the calculation of the power utilisation and this leads to less accurate estimations.
+specify the number of samples for the context switch (\-C) test. The context switch test will measure 0 to 1000 context switches per second across 1..number of CPUs. The number of test rounds to be done per CPU is controlled by the samples value.  If samples is low then less data points are gathered for the calculation of the power utilisation and this leads to less accurate results.
 .RE
 .SH OUTPUT
 During the testing/data sampling phase, power-calibrate will show the following information:
@@ -121,15 +116,28 @@ Coefficient of determination R^2 = 0.999460 (very strong)
 .fi
 .br
 
-power-calibrate will determine a suitable way of calculating the power consumed based on the CPU load and an estimation of the amount of power consumed for each 1% of CPU loading.
+Power-calibrate will determine a suitable way of calculating the power consumed based on the CPU load and an estimation of the amount of power consumed for each 1% of CPU loading.
 .br
 
 The Coefficient of determination shows how close the results are to the measured data; a perfect match results in R^2 = 1.0 and this will drop towards zero as the accuracy drops.
 .br
 
-For the \-c option an estimate of the power used per bogo-op is estimated too. This is how much power is consumed to perform 1 computation of a random number using a 64 bit multiple-with-carry. This can be used a simple compute benchmarking metric when comparing different processors or power configurations.
+For the \-c option, an estimate of the power used per bogo-op is estimated too. This is how much power is consumed to perform 1 computation of a random number using a 64 bit multiple-with-carry. This can be used a simple compute benchmarking metric when comparing different processors or power configurations.
 .SH BUGS
-power-calibrate attempts to find a linear relationship between power consumed and the CPU loading, bogo operations per second and the context switching.  This is not necessarily the case for processors. If the R^2 coefficient of determination is not close to 1.0 then this indicates there may not be a linear relationship.
+Power-calibrate attempts to find a linear relationship between power consumed and the CPU loading, bogo operations per second and the context switching.  This is not necessarily the case for processors. If the R^2 coefficient of determination is not close to 1.0 then this indicates there may not be a linear relationship.
+.SH NOTES
+Power-calibrate relies on the battery interface to provide timely stats on battery power consumption and this will vary from device.  Software or firmware may adjust the battery readings from gas-gauges and even re-calibrate the values during
+battery drain hence skewing the final results from power-calibrate.  Batteries also show a non-linear discharge characteristic, so running power-calibrate on low battery charge is not advised.
+.br
+
+Processors with hyperthreading or non-uniform processing performance will skew the bogo-ops calculations since different
+logical CPUs will vary in processing throughput.
+.br
+
+In general, the more samples gathered, the more accurate the final results will be, however, the calibration will take longer to run.  With more samples, the tendency to get a few random outliers in the samples may increase, and that may affect the final R^2 coefficient of determination.
+.br
+
+Power-calibrate is a power estimation tool, so results will vary between different runs.  It is not meant to be an accurate substitute for power measurements using a high precision multimeter.
 .SH SEE ALSO
 .BR powerstat (8), 
 .BR eventstat (8)

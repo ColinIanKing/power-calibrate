@@ -52,7 +52,7 @@
 #define MIN_RUN_DURATION	(30)		/* We recommend a run of 2 minute pers sample */
 #define DEFAULT_RUN_DURATION	(120)
 #define SAMPLE_DELAY		(1)		/* Delay between samples in seconds */
-#define START_DELAY		(15)		/* Delay to wait before sampling */
+#define START_DELAY		(20)		/* Delay to wait before sampling */
 #define	RATE_ZERO_LIMIT		(0.001)		/* Less than this we call the power rate zero */
 #define	CTXT_SAMPLES		(20)
 #define MAX_CPU_LOAD		(100)
