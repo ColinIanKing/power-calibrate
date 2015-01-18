@@ -850,7 +850,7 @@ static int power_rate_get_sys_fs(
 {
 	DIR *dir;
 	struct dirent *dirent;
-	double total_watts = 0.0, total_capacity = 0.0;
+	double total_watts = 0.0;
 	double average_voltage = 0.0;
 	int n = 0;
 
@@ -892,25 +892,11 @@ static int power_rate_get_sys_fs(
 				char buffer[4096];
 				double voltage = 0.0;
 				double amps_rate = 0.0;
-				double amps_left = 0.0;
 				double watts_rate = 0.0;
-				double watts_left = 0.0;
 
 				while (fgets(buffer, sizeof(buffer)-1, fp) != NULL) {
 					if (strstr(buffer, SYS_FIELD_STATUS_DISCHARGING))
 						*discharging = true;
-
-					if (strstr(buffer, SYS_FIELD_CHARGE_NOW) &&
-					    strlen(buffer) > sizeof(SYS_FIELD_CHARGE_NOW) - 1) {
-						sscanf(buffer + sizeof(SYS_FIELD_CHARGE_NOW) - 1, "%12d", &val);
-						amps_left = (double)val / 1000000.0;
-					}
-
-					if (strstr(buffer, SYS_FIELD_ENERGY_NOW) &&
-					    strlen(buffer) > sizeof(SYS_FIELD_ENERGY_NOW) - 1) {
-						sscanf(buffer + sizeof(SYS_FIELD_ENERGY_NOW) - 1, "%12d", &val);
-						watts_left = (double)val / 1000000.0;
-					}
 
 					if (strstr(buffer, SYS_FIELD_CURRENT_NOW) &&
 					    strlen(buffer) > sizeof(SYS_FIELD_CURRENT_NOW) - 1) {
@@ -932,7 +918,6 @@ static int power_rate_get_sys_fs(
 				}
 				average_voltage += voltage;
 				total_watts     += watts_rate + voltage * amps_rate;
-				total_capacity  += watts_left + voltage * amps_left;
 				n++;
 				(void)fclose(fp);
 			}
@@ -983,7 +968,7 @@ static int power_rate_get_proc_acpi(
 	FILE *file;
 	struct dirent *dirent;
 	char filename[PATH_MAX];
-	double total_watts = 0.0, total_capacity = 0.0;
+	double total_watts = 0.0;
 	double average_voltage = 0.0;
 	int n = 0;
 
@@ -1000,13 +985,8 @@ static int power_rate_get_proc_acpi(
 
 	while ((dirent = readdir(dir))) {
 		double voltage = 0.0;
-
 		double amps_rate = 0.0;
-		double amps_left = 0.0;
-
 		double watts_rate = 0.0;
-		double watts_left = 0.0;
-
 		char buffer[4096];
 		char *ptr;
 
@@ -1039,13 +1019,6 @@ static int power_rate_get_proc_acpi(
 					if (strstr(ptr, "mA"))
 						amps_rate = strtoull(ptr, NULL, 10) / 1000.0;
 				}
-
-				if (strstr(buffer, "remaining capacity")) {
-					if (strstr(ptr, "mW"))
-						watts_left = strtoull(ptr, NULL, 10) / 1000.0 ;
-					if (strstr(ptr, "mA"))
-						amps_left = strtoull(ptr, NULL, 10) / 1000.0;
-				}
 			}
 		}
 		(void)fclose(file);
@@ -1074,7 +1047,6 @@ static int power_rate_get_proc_acpi(
 
 		average_voltage += voltage;
 		total_watts     += watts_rate + voltage * amps_rate;
-		total_capacity  += watts_left + voltage * amps_left;
 		n++;
 	}
 	(void)closedir(dir);
