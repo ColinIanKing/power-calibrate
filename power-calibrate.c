@@ -49,10 +49,10 @@
 #include <sys/wait.h>
 #include <sys/utsname.h>
 
-#define MIN_RUN_DURATION	(10)		/* We recommend a run of 2 minute pers sample */
+#define MIN_RUN_DURATION	(30)		/* We recommend a run of 2 minute pers sample */
 #define DEFAULT_RUN_DURATION	(120)
 #define SAMPLE_DELAY		(1)		/* Delay between samples in seconds */
-#define START_DELAY		(0)		/* Delay to wait before sampling */
+#define START_DELAY		(15)		/* Delay to wait before sampling */
 #define	RATE_ZERO_LIMIT		(0.001)		/* Less than this we call the power rate zero */
 #define	CTXT_SAMPLES		(20)
 #define MAX_CPU_LOAD		(100)
@@ -114,7 +114,12 @@ typedef struct {
 	double	y;
 } tuple_t;
 
-typedef void (*func)(uint64_t param, const uint32_t instance, uint64_t *bogo_ops);
+typedef struct {
+	double	ops;
+	uint8_t	padding[64];
+} bogo_ops_t;
+
+typedef void (*func)(uint64_t param, const uint32_t instance, bogo_ops_t *bogo_ops);
 
 static int32_t sample_delay   = SAMPLE_DELAY;	/* time between each sample in secs */
 static volatile bool stop_flag;			/* sighandler stop flag */
@@ -123,7 +128,7 @@ static int32_t opt_flags;				/* command options */
 static int32_t samples_cpu = 10.0;
 static int32_t samples_ctxt = CTXT_SAMPLES;
 static char *app_name = "power-calibrate";
-static uint64_t *bogo_ops;
+static bogo_ops_t *bogo_ops;
 
 /*
  *  Attempt to catch a range of signals so
@@ -318,14 +323,13 @@ void set_affinity(int cpu)
 static void stress_cpu(
 	const uint64_t cpu_load,
 	const uint32_t instance,
-	uint64_t *bogo_ops)
+	bogo_ops_t *bogo_ops)
 {
-	uint64_t ops = 0;
 	/*
 	 * Normal use case, 100% load, simple spinning on CPU
 	 */
 	if (cpu_load == 100) {
-		int i;
+		uint64_t i;
 		for (;;) {
 			for (i = 0; i < 1000000; i++) {
 #if __GNUC__
@@ -333,11 +337,12 @@ static void stress_cpu(
 				__asm__ __volatile__("");
 #endif
 				mwc();
-				ops++;
-				if (stop_flag)
+				if (stop_flag) {
+					bogo_ops[instance].ops += i;
 					exit(EXIT_SUCCESS);
+				}
 			}
-			bogo_ops[instance] = ops;
+			bogo_ops[instance].ops += i;
 		}
 		exit(EXIT_SUCCESS);
 	}
@@ -357,7 +362,7 @@ static void stress_cpu(
 	 * enough for most purposes.
 	 */
 	for (;;) {
-		int i;
+		uint64_t i;
 		double time_start, delay;
 		struct timeval tv;
 
@@ -368,11 +373,12 @@ static void stress_cpu(
 			__asm__ __volatile__("");
 #endif
 			mwc();
-			ops++;
-			if (stop_flag)
+			if (stop_flag) {
+				bogo_ops[instance].ops += i;
 				exit(EXIT_SUCCESS);
+			}
 		}
-		bogo_ops[instance] = ops;
+		bogo_ops[instance].ops += i;
 		delay = gettime_to_double() - time_start;
 		/* Must not calculate this with zero % load */
 		delay *= (((100.0 / (double) cpu_load)) - 1.0);
@@ -389,7 +395,7 @@ static void stress_cpu(
 static void stress_ctxt(
 	const uint64_t delay,
 	const uint32_t instance,
-	uint64_t *bogo_ops)
+	bogo_ops_t *bogo_ops)
 {
 	pid_t pid;
 	int pipefds[2];
@@ -414,7 +420,7 @@ static void stress_ctxt(
 			for (;;) {
 				if (read(pipefds[0], &ch, sizeof(ch)) <= 0)
 					break;	/* happens on pipe breakage */
-				bogo_ops[instance]++;
+				bogo_ops[instance].ops++;
 				if (stop_flag || (ch == CTXT_STOP))
 					break;
 			}
@@ -477,7 +483,7 @@ void start_load(
 	const uint32_t total_procs,
 	const func load_func,
 	const uint64_t param,
-	uint64_t *bogo_ops)
+	bogo_ops_t *bogo_ops)
 {
 	uint32_t n_procs;
 	int i;
@@ -591,7 +597,7 @@ static void stats_clear_all(stats_t *const stats, const int n)
  *  stats_read()
  *	gather pertinent /proc/stat data
  */
-static int stats_read(stats_t *const stats, uint64_t *bogo_ops)
+static int stats_read(stats_t *const stats, bogo_ops_t *bogo_ops)
 {
 	FILE *fp;
 	char buf[4096];
@@ -650,7 +656,7 @@ static int stats_read(stats_t *const stats, uint64_t *bogo_ops)
 	stats->value[BOGO_OPS] = 0;
 	stats->inaccurate[BOGO_OPS] = false;
 	for (i = 0; i < num_cpus; i++) {
-		stats->value[BOGO_OPS] += bogo_ops[i];
+		stats->value[BOGO_OPS] += bogo_ops[i].ops;
 	}
 
 	return 0;
@@ -1149,7 +1155,7 @@ static int monitor(
 	const char *test,
 	double percent_each,
 	double percent,
-	uint64_t *bogo_ops,
+	bogo_ops_t *bogo_ops,
 	double *busy,
 	double *ctxt,
 	double *power,
@@ -1443,7 +1449,7 @@ static int monitor_cpu_load(
 	FILE *fp,
 	const int start_delay,
 	const int max_readings,
-	uint64_t *bogo_ops)
+	bogo_ops_t *bogo_ops)
 {
 	uint32_t cpus, i, n = 0;
 	tuple_t	 tuples_load[num_cpus * samples_cpu], *tuple_load = tuples_load;
@@ -1518,7 +1524,7 @@ static int monitor_ctxt_load(
 	FILE *fp,
 	const int start_delay,
 	const int max_readings,
-	uint64_t *bogo_ops)
+	bogo_ops_t *bogo_ops)
 {
 	int i, n = 0;
 	tuple_t	 tuples_ctxt[samples_ctxt], *tuple_ctxt = tuples_ctxt;
@@ -1540,7 +1546,7 @@ static int monitor_ctxt_load(
 
 		snprintf(buffer, sizeof(buffer), "%.1f", scale * i);
 
-		memset(bogo_ops, 0, sizeof(uint64_t) * num_cpus);
+		memset(bogo_ops, 0, sizeof(bogo_ops_t) * num_cpus);
 		start_load(pids, 1, stress_ctxt, delay, bogo_ops);
 		ret = monitor(start_delay, max_readings, buffer, percent_each, percent,
 			bogo_ops, &dummy, &x, &tuple_ctxt->y, &voltage, &tuple_ops->y);
@@ -1688,7 +1694,7 @@ int main(int argc, char * const argv[])
 	run_duration = opt_run_duration;
 	max_readings = run_duration / sample_delay;
 
-	bogo_ops = mmap(NULL, sizeof(uint64_t) * num_cpus,
+	bogo_ops = mmap(NULL, sizeof(bogo_ops_t) * num_cpus,
 		PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANON, -1, 0);
 	if (bogo_ops == MAP_FAILED) {
 		fprintf(stderr, "mmap failed: errno=%d (%s).\n",
@@ -1709,7 +1715,7 @@ int main(int argc, char * const argv[])
 	ret = EXIT_SUCCESS;
 out:
 	if (bogo_ops)
-		(void)munmap(bogo_ops, sizeof(uint64_t) * num_cpus);
+		(void)munmap(bogo_ops, sizeof(bogo_ops_t) * num_cpus);
 	if (fp) {
 		dump_json_misc(fp);
 
