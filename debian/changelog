@@ -1,3 +1,14 @@
+power-calibrate (0.01.07-1) unstable; urgency=medium
+
+  * Makefile: bump version
+  * Clean up error handling messages.
+  * Fix some issues found by Coverity Scan
+  * power-calibrate should be installed to /usr/sbin
+  * Minor adjustments to keep code and manual in sync and up to date
+  * Remove unwanted capacity calculation cruft
+
+ -- Colin King <colin.king@canonical.com>  Sun, 18 Jan 2015 20:28:00 +0000
+
 power-calibrate (0.01.06) vivid; urgency=medium
 
   * Makefile: bump version
