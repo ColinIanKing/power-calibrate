@@ -57,10 +57,12 @@
 #define SAMPLE_DELAY		(1)		/* Delay between samples in seconds */
 #define START_DELAY		(20)		/* Delay to wait before sampling */
 #define	RATE_ZERO_LIMIT		(0.001)		/* Less than this we call the power rate zero */
-#define	CTXT_SAMPLES		(20)
+#define	CTXT_SAMPLES		(21)
 #define MAX_CPU_LOAD		(100)
 #define DEFAULT_TIMEOUT		(10)
 #define CTXT_STOP		'X'
+
+#define DETECT_DISCHARGING	(1)
 
 #define OPT_CPU_LOAD		(0x00000001)
 #define OPT_CTXT_LOAD		(0x00000002)
@@ -122,16 +124,28 @@ typedef struct {
 	uint8_t	padding[64];
 } bogo_ops_t;
 
+typedef struct cpu_info {
+	int		cpu;
+	struct cpu_info *next;
+} cpu_info_t;
+
+typedef struct cpu_list {
+	cpu_info_t	*head;
+	cpu_info_t	*tail;
+	uint32_t	count;
+} cpu_list_t;
+
 typedef void (*func)(uint64_t param, const uint32_t instance, bogo_ops_t *bogo_ops);
 
 static int32_t sample_delay   = SAMPLE_DELAY;	/* time between each sample in secs */
 static volatile bool stop_flag;			/* sighandler stop flag */
 static int32_t num_cpus;				/* number of CPUs */
 static int32_t opt_flags;				/* command options */
-static int32_t samples_cpu = 10.0;
+static int32_t samples_cpu = 11.0;
 static int32_t samples_ctxt = CTXT_SAMPLES;
 static char *app_name = "power-calibrate";
 static bogo_ops_t *bogo_ops;
+static cpu_list_t cpu_list;
 
 /*
  *  Attempt to catch a range of signals so
@@ -310,13 +324,20 @@ static void handle_sig(int dummy)
  *  set_affinity()
  *	set cpu affinity
  */
-void set_affinity(int cpu)
+static int set_affinity(int cpu)
 {
 	cpu_set_t mask;
+	int ret;
 
 	CPU_ZERO(&mask);
-	CPU_SET(cpu % num_cpus, &mask);
-	(void)sched_setaffinity(0, sizeof(mask), &mask);
+	CPU_SET(cpu, &mask);
+	ret = sched_setaffinity(0, sizeof(mask), &mask);
+	if (ret < 0) {
+		fprintf(stderr, "sched_setffinity failed: errno=%d (%s).\n",
+			errno, strerror(errno));
+		return -1;
+	}
+	return 0;
 }
 
 /*
@@ -491,9 +512,10 @@ void start_load(
 	const uint64_t param,
 	bogo_ops_t *bogo_ops)
 {
-	uint32_t n_procs;
+	uint32_t instance;
 	int i;
 	struct sigaction new_action;
+	cpu_info_t *c;
 
 	memset(&new_action, 0, sizeof(new_action));
 	for (i = 0; signals[i] != -1; i++) {
@@ -507,7 +529,8 @@ void start_load(
 
 	memset(pids, 0, sizeof(pid_t) * total_procs);
 
-	for (n_procs = 0; n_procs < total_procs; n_procs++) {
+	for (c = cpu_list.head, instance = 0;
+		c && instance < total_procs; c = c->next, instance++) {
 		int fd;
 		int pid = fork();
 
@@ -515,18 +538,19 @@ void start_load(
 		case -1:
 			fprintf(stderr, "Cannot fork, errno=%d (%s)\n",
 				errno, strerror(errno));
-			stop_load(pids, n_procs);
+			stop_load(pids, instance);
 			exit(EXIT_FAILURE);
 		case 0:
-			set_affinity(n_procs);
+			if (set_affinity(c->cpu) < 0)
+				exit(0);
 
 			for (fd = (getdtablesize() - 1); fd > 2; fd--)
 				(void)close(fd);
 			/* Child */
-			load_func(param, n_procs, bogo_ops);
+			load_func(param, instance, bogo_ops);
 			exit(0);
 		default:
-			pids[n_procs] = pid;
+			pids[instance] = pid;
 			break;
 		}
 	}
@@ -937,10 +961,14 @@ static int power_rate_get_sys_fs(
 
 	(void)closedir(dir);
 
+#if DETECT_DISCHARGING
 	if (! *discharging) {
 		printf("Machine is not discharging, cannot measure power usage.\n");
 		return -1;
 	}
+#else
+	*discharging = true;
+#endif
 
 	/*
  	 *  If the battery is helpful it supplies the rate already, in which case
@@ -1063,11 +1091,15 @@ static int power_rate_get_proc_acpi(
 	}
 	(void)closedir(dir);
 
+#if DETECT_DISCHARGING
 	if (! *discharging) {
 		printf("Machine is indicating it is not discharging and hence "
 		       "we cannot measure power usage.\n");
 		return -1;
 	}
+#else
+	*discharging = true;
+#endif
 
 	/*
  	 * If the battery is helpful it supplies the rate already, in which
@@ -1440,7 +1472,7 @@ static int monitor_cpu_load(
 	const int max_readings,
 	bogo_ops_t *bogo_ops)
 {
-	uint32_t cpus, i, n = 0;
+	uint32_t i, n = 0;
 	tuple_t	 tuples_load[num_cpus * samples_cpu], *tuple_load = tuples_load;
 	tuple_t	 tuples_ops[num_cpus * samples_cpu], *tuple_ops = tuples_ops;
 	double gradient, intercept, r2;
@@ -1451,8 +1483,10 @@ static int monitor_cpu_load(
 	stats_headings("CPU load");
 	for (i = 0; i < (uint32_t)samples_cpu; i++) {
 		pid_t pids[num_cpus];
+		cpu_info_t *c;
+		uint32_t n_cpus;
 
-		for (cpus = 1; cpus <= (uint32_t)num_cpus; cpus++) {
+		for (n_cpus = 1, c = cpu_list.head; c; n_cpus++, c = c->next) {
 			char buffer[1024];
 			double dummy, voltage;
 			int cpu_load = scale * i;
@@ -1460,13 +1494,13 @@ static int monitor_cpu_load(
 			double percent_each = 100.0 / (samples_cpu * num_cpus);
 			double percent = n * percent_each;
 
-			snprintf(buffer, sizeof(buffer), "%d%% x %d", cpu_load, cpus);
-			start_load(pids, cpus, stress_cpu, (uint64_t)cpu_load, bogo_ops);
+			snprintf(buffer, sizeof(buffer), "%d%% x %d", cpu_load, n_cpus);
+			start_load(pids, n_cpus, stress_cpu, (uint64_t)cpu_load, bogo_ops);
 
 			ret = monitor(start_delay, max_readings, buffer, percent_each, percent, bogo_ops,
 				&tuple_load->x, &dummy, &tuple_load->y, &voltage, &tuple_ops->x);
 			tuple_ops->y = tuple_load->y;
-			stop_load(pids, cpus);
+			stop_load(pids, n_cpus);
 			if (stop_flag || (ret < 0))
 				return -1;
 			tuple_load++;
@@ -1585,6 +1619,102 @@ static int monitor_ctxt_load(
 	return 0;
 }
 
+/*
+ *  add_cpu_info()
+ *	add cpu # to cpu_info list
+ */
+static int add_cpu_info(int cpu)
+{
+	cpu_info_t *c;
+
+	c = calloc(1, sizeof(cpu_info_t));
+	if (!c) {
+		fprintf(stderr, "Out of memory allocating CPU  info.\n");
+		return -1;
+	}
+	if (cpu_list.head)
+		cpu_list.tail->next = c;
+	else
+		cpu_list.head = c;
+
+	c->cpu = cpu;
+	cpu_list.tail = c;
+	cpu_list.count++;
+
+	return 0;
+}
+
+
+/*
+ *  parse_cpu_info()
+ *	parse cpu info 
+ */
+static int parse_cpu_info(char *arg)
+{
+	char *str, *token, *saveptr = NULL;
+	int n = 0;
+
+	for (str = arg; (token = strtok_r(str, ",", &saveptr)) != NULL; str = NULL) {
+		int cpu = -1;
+		char *endptr;
+
+		errno = 0;
+		cpu = strtol(token, &endptr, 10);
+		if (errno || endptr == token) {
+			fprintf(stderr, "Invalid CPU specified.\n");
+			return -1;
+		}
+		if (cpu < 0 || cpu > num_cpus - 1) {
+			fprintf(stderr, "CPU number out of range.\n");
+			return -1;
+		}
+		if (add_cpu_info(cpu) < 0)
+			return -1;
+		n++;
+	}
+	if (!cpu_list.head) {
+		fprintf(stderr, "No valid CPU numbers given.\n");
+		return -1;
+	}
+
+	num_cpus = n;
+
+	return 0;
+}
+
+/*
+ *  populate_cpu_info()
+ *	if user has not supplied cpu info then
+ *	we need to populate the list
+ */
+static inline int populate_cpu_info(void)
+{
+	int cpu;
+
+	if (cpu_list.head)
+		return 0;
+
+	for (cpu = 0; cpu < num_cpus; cpu++)
+		if (add_cpu_info(cpu) < 0)
+			return -1;
+
+	return 0;
+}
+
+static void free_cpu_info(void)
+{
+	cpu_info_t *c = cpu_list.head;
+
+	while (c) {
+		cpu_info_t *next = c->next;
+		free(c);
+		c = next;
+	}
+	cpu_list.head = NULL;
+	cpu_list.tail = NULL;
+	cpu_list.count = 0;
+}
+
 int main(int argc, char * const argv[])
 {
 	int max_readings, run_duration, start_delay = START_DELAY;
@@ -1623,11 +1753,8 @@ int main(int argc, char * const argv[])
 			show_help(argv);
 			goto out;
 		case 'n':
-			num_cpus = atoi(optarg);
-			if (num_cpus < 1) {
-				fprintf(stderr, "Number of CPUs must be 1 or more.\n");
+			if (parse_cpu_info(optarg) < 0)
 				goto out;
-			}
 			break;
 		case 'o':
 			filename = optarg;
@@ -1662,6 +1789,8 @@ int main(int argc, char * const argv[])
 			goto out;
 		}
 	}
+
+	populate_cpu_info();
 
 	if (!(opt_flags & (OPT_CPU_LOAD | OPT_CTXT_LOAD))) {
 		fprintf(stderr, "Requires -c or -C option(s).\n");
@@ -1699,7 +1828,6 @@ int main(int argc, char * const argv[])
 		(void)siginterrupt(signals[i], 1);
 	}
 
-	//run_duration = opt_run_duration + START_DELAY - start_delay;
 	run_duration = opt_run_duration;
 	max_readings = run_duration / sample_delay;
 
@@ -1733,5 +1861,8 @@ out:
 		if (ret != EXIT_SUCCESS)
 			unlink(filename);
 	}
+	if (cpu_list.head)
+		free_cpu_info();
+
 	exit(ret);
 }
