@@ -125,16 +125,19 @@ typedef struct {
 	int	cpus_used;
 } value_t;
 
+/* Bogot operation stats */
 typedef struct {
 	double	ops;
-	uint8_t	padding[64];
+	uint8_t	padding[64];	/* Make ops not align on cache boundary */
 } bogo_ops_t;
 
+/* CPUs to use from -n option */
 typedef struct cpu_info {
-	int		cpu_id;
+	int		cpu_id;	/* CPU number, 0 = first CPU */
 	struct cpu_info *next;
 } cpu_info_t;
 
+/* CPU list */
 typedef struct cpu_list {
 	cpu_info_t	*head;
 	cpu_info_t	*tail;
@@ -1478,6 +1481,10 @@ static void dump_json_misc(FILE *fp)
 	fprintf(fp, "    }\n");
 }
 
+/*
+ *  calc_average_voltage()
+ *	calculatate average voltage on CPU ids
+ */
 static double calc_average_voltage(
 	const int cpus_used,
 	value_t *values,
@@ -1501,6 +1508,10 @@ static double calc_average_voltage(
 	return average;
 }
 
+/*
+ *  show_trend_by_load()
+ *	Show power trends by % CPU load
+ */
 static void show_trend_by_load(
 	FILE *fp,
 	const int cpus_used,
@@ -1528,6 +1539,10 @@ static void show_trend_by_load(
 	dump_json_values(fp, "cpu-load", "one-percent-cpu-load", gradient, r2);
 }
 
+/*
+ *  show_trend_by_load()
+ *	Show power trends by bogos CPU operations
+ */
 static void show_trend_by_ops(
 	FILE *fp,
 	const int cpus_used,
@@ -1555,6 +1570,10 @@ static void show_trend_by_ops(
 	printf("  Coefficient of determination R^2 = %f (%s)\n", r2, coefficient_r2(r2));
 }
 
+/*
+ *  show_trend_by_load()
+ *	Show power trends by context switches/s
+ */
 static void show_trend_by_ctxt(
 	FILE *fp,
 	const int cpus_used,
@@ -1811,6 +1830,10 @@ static inline int populate_cpu_info(void)
 	return 0;
 }
 
+/*
+ *  free_cpu_info()
+ *	free CPU info list
+ */
 static void free_cpu_info(void)
 {
 	cpu_info_t *c = cpu_list.head;
