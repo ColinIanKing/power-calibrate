@@ -1327,7 +1327,7 @@ sample_now:
  *	calculate linear trendline - compute gradient, y intercept and
  *	coefficient of determination.
  */
-static void calc_trend(
+static int calc_trend(
 	const int cpus_used,
 	const value_t *values,
 	const int num_values,
@@ -1353,6 +1353,11 @@ static void calc_trend(
 		}
 	}
 
+	if (!n) {
+		printf("Cannot perform trend analysis, zero samples.\n");
+		return -1;
+	}
+
 	/*
 	 * Coefficient of determination R^2,
 	 * http://mathbits.com/MathBits/TISection/Statistics2/correlation.htm
@@ -1375,6 +1380,8 @@ static void calc_trend(
 	*gradient = (a - b) / (c - d);
 	f = (*gradient) * sum_x;
 	*intercept = (e - f) / (double)n;
+
+	return 0;
 }
 
 
@@ -1507,7 +1514,8 @@ static void show_trend_by_load(
 	if (average_voltage < 0)
 		return;
 
-	calc_trend(cpus_used, values, num_values, &gradient, &intercept, &r2);
+	if (calc_trend(cpus_used, values, num_values, &gradient, &intercept, &r2) < 0)
+		return;
 
 	units_to_str(gradient, "W", watts, sizeof(watts));
 	units_to_str(average_voltage, "V", volts, sizeof(volts));
@@ -1535,7 +1543,8 @@ static void show_trend_by_ops(
 	if (average_voltage < 0)
 		return;
 
-	calc_trend(cpus_used, values, num_values, &gradient, &intercept, &r2);
+	if (calc_trend(cpus_used, values, num_values, &gradient, &intercept, &r2) < 0)
+		return;
 
 	units_to_str(gradient, "W", watts, sizeof(watts));
 	units_to_str(average_voltage, "V", volts, sizeof(volts));
@@ -1559,7 +1568,8 @@ static void show_trend_by_ctxt(
 	if (average_voltage < 0)
 		return;
 
-	calc_trend(cpus_used, values, num_values, &gradient, &intercept, &r2);
+	if (calc_trend(cpus_used, values, num_values, &gradient, &intercept, &r2) < 0)
+		return;
 
 	units_to_str(gradient, "W", watts, sizeof(watts));
 	units_to_str(average_voltage, "V", volts, sizeof(volts));
