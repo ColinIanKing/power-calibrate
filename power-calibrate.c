@@ -793,7 +793,7 @@ static bool stats_gather(
  */
 static void stats_headings(const char *test)
 {
-	printf("%8.8s  User   Sys  Idle  Run Ctxt/s  IRQ/s  Ops/s  Watts\n", test);
+	printf("%8.8s  User   Sys  Idle  Run  Ctxt/s  IRQ/s  Ops/s  Watts\n", test);
 }
 
 /*
@@ -821,8 +821,8 @@ static void stats_print(
 	uint64_to_str(s->value[BOGO_OPS], str, sizeof(str));
 
 	fmt = summary ?
-		"%8.8s %5.1f %5.1f %5.1f %4.1f %6.1f %6.1f %6s %s\n" :
-		"%8.8s %5.1f %5.1f %5.1f %4.0f %6.0f %6.0f %6s %s\n";
+		"%8.8s %5.1f %5.1f %5.1f %4.1f %7.1f %6.1f %6s %s\n" :
+		"%8.8s %5.1f %5.1f %5.1f %4.0f %7.0f %6.0f %6s %s\n";
 	printf(fmt,
 		prefix,
 		s->value[CPU_USER], s->value[CPU_SYS], s->value[CPU_IDLE],
