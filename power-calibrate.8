@@ -33,7 +33,7 @@ battery powered system as it uses battery drain rates to estimate power consumpt
 power-calibrate options are as follow:
 .TP
 .B \-c
-calibrate CPU power usage. This will run through various CPU utilisation levels across the CPUs on the device and then compute the amount of power consumed for just 1% of CPU utilisation.
+calibrate CPU power usage. This will run through various CPU utilisation levels across the CPUs on the device and then compute the amount of power consumed for just 1% of CPU utilisation.  It will also provide a metric of compute in terms of bogus operations (bogo ops) per Watt; where 1 bogo op is the computation of a random 64 bit integer using a multiple-with-carry pseudo random number generator.
 .TP
 .B \-C
 calibrate context switch power usage. This will generate various levels of wakeup events and then compute the amount of power consumed for just 1 context switch.
@@ -54,7 +54,7 @@ specify a list CPU numbers to run on.  By default, the number of CPUs is determi
 output results into a json formatted file.
 .TP
 .B \-p
-show progress
+show progress. This will display the progress in terms of % completion of a test run and also % completion of the total run.  The progress is based on work done rather than on an accurate time estimate.
 .TP
 .B \-r secs
 Set run duration. Normally, the default of 120 seconds is suitable for most laptop devices where discharge rates from the battery can be fairly accurately determined over this duration.  Setting this to a shorter duration will complete the calibration tests in less time but may be less accurate.
