@@ -52,7 +52,7 @@
 #include <sys/wait.h>
 #include <sys/utsname.h>
 
-#define MIN_RUN_DURATION	(30)		/* We recommend a run of 2 minute pers sample */
+#define MIN_RUN_DURATION	(10)		/* We recommend a run of 2 minute pers sample */
 #define DEFAULT_RUN_DURATION	(120)
 #define SAMPLE_DELAY		(1)		/* Delay between samples in seconds */
 #define START_DELAY		(20)		/* Delay to wait before sampling */
@@ -61,12 +61,14 @@
 #define MAX_CPU_LOAD		(100)
 #define DEFAULT_TIMEOUT		(10)
 #define CTXT_STOP		'X'
+#define CPU_ANY			(-1)
 
 #define DETECT_DISCHARGING	(1)
 
 #define OPT_CPU_LOAD		(0x00000001)
 #define OPT_CTXT_LOAD		(0x00000002)
 #define OPT_PROGRESS		(0x00000004)
+#define OPT_CALIBRATE_EACH_CPU	(0x00000008)
 
 #define CPU_USER		(0)
 #define CPU_NICE		(1)
@@ -91,8 +93,8 @@
 #define MWC_SEED_Z		(362436069ULL)
 #define MWC_SEED_W		(521288629ULL)
 
-#define SYS_CLASS_POWER_SUPPLY		"/sys/class/power_supply"
-#define PROC_ACPI_BATTERY		"/proc/acpi/battery"
+#define SYS_CLASS_POWER_SUPPLY	"/sys/class/power_supply"
+#define PROC_ACPI_BATTERY	"/proc/acpi/battery"
 
 #define SYS_FIELD_VOLTAGE_NOW		"POWER_SUPPLY_VOLTAGE_NOW="
 #define SYS_FIELD_POWER_NOW		"POWER_SUPPLY_POWER_NOW="
@@ -117,7 +119,11 @@ typedef struct {
 typedef struct {
 	double 	x;
 	double	y;
-} tuple_t;
+
+	double  voltage;
+	int	cpu_id;
+	int	cpus_used;
+} value_t;
 
 typedef struct {
 	double	ops;
@@ -125,7 +131,7 @@ typedef struct {
 } bogo_ops_t;
 
 typedef struct cpu_info {
-	int		cpu;
+	int		cpu_id;
 	struct cpu_info *next;
 } cpu_info_t;
 
@@ -139,8 +145,9 @@ typedef void (*func)(uint64_t param, const uint32_t instance, bogo_ops_t *bogo_o
 
 static int32_t sample_delay   = SAMPLE_DELAY;	/* time between each sample in secs */
 static volatile bool stop_flag;			/* sighandler stop flag */
-static int32_t num_cpus;				/* number of CPUs */
-static int32_t opt_flags;				/* command options */
+static int32_t num_cpus;			/* number of CPUs */
+static int32_t max_cpus;			/* number of CPUs in system */
+static int32_t opt_flags;			/* command options */
 static int32_t samples_cpu = 11.0;
 static int32_t samples_ctxt = CTXT_SAMPLES;
 static char *app_name = "power-calibrate";
@@ -541,7 +548,7 @@ void start_load(
 			stop_load(pids, instance);
 			exit(EXIT_FAILURE);
 		case 0:
-			if (set_affinity(c->cpu) < 0)
+			if (set_affinity(c->cpu_id) < 0)
 				exit(0);
 
 			for (fd = (getdtablesize() - 1); fd > 2; fd--)
@@ -1322,25 +1329,29 @@ sample_now:
  *	coefficient of determination.
  */
 static void calc_trend(
-	const tuple_t *tuples,
-	const int n,
+	const int cpus_used,
+	const value_t *values,
+	const int num_values,
 	double *gradient,
 	double *intercept,
 	double *r2)
 {
-	int i;
+	int i, n = 0;
 	double a = 0.0, b, c = 0.0, d, e, f;
 	double sum_x = 0.0, sum_y = 0.0;
 	double sum_x2 = 0.0, sum_y2 = 0.0;
 	double sum_xy = 0.0, r;
 
-	for (i = 0; i < n; i++) {
-		a += tuples[i].x * tuples[i].y;
-		sum_x += tuples[i].x;
-		sum_y += tuples[i].y;
-		sum_xy += (tuples[i].x * tuples[i].y);
-		sum_x2 += (tuples[i].x * tuples[i].x);
-		sum_y2 += (tuples[i].y * tuples[i].y);
+	for (i = 0; i < num_values; i++) {
+		if (cpus_used == CPU_ANY || cpus_used >= values[i].cpus_used) {
+			a += values[i].x * values[i].y;
+			sum_x += values[i].x;
+			sum_y += values[i].y;
+			sum_xy += (values[i].x * values[i].y);
+				sum_x2 += (values[i].x * values[i].x);
+			sum_y2 += (values[i].y * values[i].y);
+			n++;
+		}
 	}
 
 	/*
@@ -1461,6 +1472,107 @@ static void dump_json_misc(FILE *fp)
 	fprintf(fp, "    }\n");
 }
 
+static double calc_average_voltage(
+	const int cpus_used,
+	value_t *values,
+	const int num_values)
+{
+	int i, n = 0;
+	double average = 0.0;
+
+	for (i = 0; i < num_values; i++) {
+		if (cpus_used == CPU_ANY || cpus_used >= values[i].cpus_used) {
+			average += values[i].voltage;
+			n++;
+		}
+	}
+	average = (n == 0) ? 0.0 : average / n;
+
+	if (average == 0.0) {
+		printf("\nAverage voltage was zero, cannot compute statistics.\n");
+		return -1;
+	}
+	return average;
+}
+
+static void show_trend_by_load(
+	FILE *fp,
+	const int cpus_used,
+	value_t *values,
+	const int num_values)
+{
+	char watts[16], amps[16], volts[16];
+	double gradient, intercept, r2;
+	double average_voltage = calc_average_voltage(cpus_used, values, num_values);
+
+	if (average_voltage < 0)
+		return;
+
+	calc_trend(cpus_used, values, num_values, &gradient, &intercept, &r2);
+
+	units_to_str(gradient, "W", watts, sizeof(watts));
+	units_to_str(average_voltage, "V", volts, sizeof(volts));
+	units_to_str(gradient / average_voltage, "A", amps, sizeof(amps));
+
+	printf("  Power (Watts) = (%% CPU load * %f) + %f\n", gradient, intercept);
+	printf("  Each 1%% CPU load is about %s (about %s @ %s)\n", watts, amps, volts);
+	printf("  Coefficient of determination R^2 = %f (%s)\n", r2, coefficient_r2(r2));
+
+	dump_json_values(fp, "cpu-load", "one-percent-cpu-load", gradient, r2);
+}
+
+static void show_trend_by_ops(
+	FILE *fp,
+	const int cpus_used,
+	value_t *values,
+	const int num_values)
+{
+	char watts[16], amps[16], volts[16];
+	double gradient, intercept, r2;
+	double average_voltage = calc_average_voltage(cpus_used, values, num_values);
+
+	(void)fp;
+
+	if (average_voltage < 0)
+		return;
+
+	calc_trend(cpus_used, values, num_values, &gradient, &intercept, &r2);
+
+	units_to_str(gradient, "W", watts, sizeof(watts));
+	units_to_str(average_voltage, "V", volts, sizeof(volts));
+	units_to_str(gradient / average_voltage, "A", amps, sizeof(amps));
+
+	printf("  Power (Watts) = (bogo op * %e) + %f\n", gradient, intercept);
+	printf("  1 bogo ops is about %s (about %s @ %s)\n", watts, amps, volts);
+	printf("  Coefficient of determination R^2 = %f (%s)\n", r2, coefficient_r2(r2));
+}
+
+static void show_trend_by_ctxt(
+	FILE *fp,
+	const int cpus_used,
+	value_t *values,
+	const int num_values)
+{
+	char watts[16], amps[16], volts[16];
+	double gradient, intercept, r2;
+	double average_voltage = calc_average_voltage(cpus_used, values, num_values);
+
+	if (average_voltage < 0)
+		return;
+
+	calc_trend(cpus_used, values, num_values, &gradient, &intercept, &r2);
+
+	units_to_str(gradient, "W", watts, sizeof(watts));
+	units_to_str(average_voltage, "V", volts, sizeof(volts));
+	units_to_str(gradient / average_voltage, "A", amps, sizeof(amps));
+
+	printf("\n");
+	printf("  Power (Watts) = (context switches * %f) + %f\n", gradient, intercept);
+	printf("  1 context switch is about %s (about %s @ %s)\n", watts, amps, volts);
+	printf("  Coefficient of determination R^2 = %f (%s)\n", r2, coefficient_r2(r2));
+
+	dump_json_values(fp, "context-switches", "one-context-switch", gradient, r2);
+}
 
 /*
  *  monitor_cpu_load()
@@ -1473,12 +1585,9 @@ static int monitor_cpu_load(
 	bogo_ops_t *bogo_ops)
 {
 	uint32_t i, n = 0;
-	tuple_t	 tuples_load[num_cpus * samples_cpu], *tuple_load = tuples_load;
-	tuple_t	 tuples_ops[num_cpus * samples_cpu], *tuple_ops = tuples_ops;
-	double gradient, intercept, r2;
-	double average_voltage = 0.0;
+	value_t	 values_load[num_cpus * samples_cpu], *value_load = values_load;
+	value_t	 values_ops[num_cpus * samples_cpu], *value_ops = values_ops;
 	double scale = (double)MAX_CPU_LOAD / (samples_cpu - 1);
-	char watts[16], amps[16], volts[16];
 
 	stats_headings("CPU load");
 	for (i = 0; i < (uint32_t)samples_cpu; i++) {
@@ -1488,7 +1597,7 @@ static int monitor_cpu_load(
 
 		for (n_cpus = 1, c = cpu_list.head; c; n_cpus++, c = c->next) {
 			char buffer[1024];
-			double dummy, voltage;
+			double dummy;
 			int cpu_load = scale * i;
 			int ret;
 			double percent_each = 100.0 / (samples_cpu * num_cpus);
@@ -1497,16 +1606,21 @@ static int monitor_cpu_load(
 			snprintf(buffer, sizeof(buffer), "%d%% x %d", cpu_load, n_cpus);
 			start_load(pids, n_cpus, stress_cpu, (uint64_t)cpu_load, bogo_ops);
 
-			ret = monitor(start_delay, max_readings, buffer, percent_each, percent, bogo_ops,
-				&tuple_load->x, &dummy, &tuple_load->y, &voltage, &tuple_ops->x);
-			tuple_ops->y = tuple_load->y;
+			ret = monitor(start_delay, max_readings, buffer,
+				percent_each, percent, bogo_ops,
+				&value_load->x, &dummy,
+				&value_load->y, &value_load->voltage, &value_ops->x);
+			value_ops->y = value_load->y;
+			value_ops->voltage = value_load->voltage;
+			value_ops->cpu_id = value_load->cpu_id = c->cpu_id;
+			value_ops->cpus_used = value_load->cpus_used = n_cpus;
+
 			stop_load(pids, n_cpus);
 			if (stop_flag || (ret < 0))
 				return -1;
-			tuple_load++;
-			tuple_ops++;
+			value_load++;
+			value_ops++;
 			n++;
-			average_voltage += voltage;
 		}
 	}
 	/* Keep static analysis happy */
@@ -1514,37 +1628,26 @@ static int monitor_cpu_load(
 		printf("\nZero samples, cannot compute statistics.\n");
 		return -1;
 	}
-	if (average_voltage == 0) {
-		printf("\nAverage voltage was zero, cannot compute statistics.\n");
-		return -1;
+
+
+	if (opt_flags & OPT_CALIBRATE_EACH_CPU) {
+		cpu_info_t *c;
+		int cpus_used = 0;
+
+		for (c = cpu_list.head, cpus_used = 1; c; c = c->next, cpus_used++) {
+			printf("\nFor %d CPU%s (of a %d CPU system):\n",
+				cpus_used, cpus_used > 1 ? "s" : "", max_cpus);
+			show_trend_by_load(NULL, cpus_used, values_load, n);
+			printf("\n");
+			show_trend_by_ops(NULL, cpus_used, values_ops, n);
+		}
+	} else {
+		printf("\nFor %d CPU%s (of a %d CPU system):\n",
+			cpu_list.count, cpu_list.count > 1 ? "s" : "", max_cpus);
+		show_trend_by_load(fp, CPU_ANY, values_load, n);
+		printf("\n");
+		show_trend_by_ops(fp, CPU_ANY, values_ops, n);
 	}
-	average_voltage /= n;
-
-	calc_trend(tuples_load, num_cpus * samples_cpu, &gradient, &intercept, &r2);
-
-	units_to_str(gradient, "W", watts, sizeof(watts));
-	units_to_str(average_voltage, "V", volts, sizeof(volts));
-	units_to_str(gradient / average_voltage, "A", amps, sizeof(amps));
-
-	printf("\n");
-	printf("Power (Watts) = (%% CPU load * %f) + %f\n", gradient, intercept);
-	printf("Each 1%% CPU load is about %s (about %s @ %s)\n", watts, amps, volts);
-	printf("Coefficient of determination R^2 = %f (%s)\n", r2, coefficient_r2(r2));
-	printf("\n");
-
-	calc_trend(tuples_ops, num_cpus * samples_cpu, &gradient, &intercept, &r2);
-
-	units_to_str(gradient, "W", watts, sizeof(watts));
-	units_to_str(average_voltage, "V", volts, sizeof(volts));
-	units_to_str(gradient / average_voltage, "A", amps, sizeof(amps));
-
-	printf("Power (Watts) = (bogo op * %e) + %f\n", gradient, intercept);
-	printf("1 bogo ops is about %s (about %s @ %s)\n", watts, amps, volts);
-	printf("Coefficient of determination R^2 = %f (%s)\n", r2, coefficient_r2(r2));
-	printf("\n");
-
-	dump_json_values(fp, "cpu-load", "one-percent-cpu-load", gradient, r2);
-
 	return 0;
 }
 
@@ -1558,64 +1661,62 @@ static int monitor_ctxt_load(
 	const int max_readings,
 	bogo_ops_t *bogo_ops)
 {
-	int i, n = 0;
-	tuple_t	 tuples_ctxt[samples_ctxt], *tuple_ctxt = tuples_ctxt;
-	tuple_t	 tuples_ops[num_cpus * samples_cpu], *tuple_ops = tuples_ops;
-	double gradient, intercept, r2, x;
-	double average_voltage = 0.0;
+	uint32_t i, n = 0;
+	value_t	 values_ctxt[num_cpus * samples_ctxt], *value_ctxt = values_ctxt;
 	double scale = 1000.0 / (samples_ctxt - 1);
-	char watts[16], amps[16], volts[16];
 
 	stats_headings("Wakeups");
-	for (i = 0; i < samples_ctxt; i++) {
+	for (i = 0; i < (uint32_t)samples_ctxt; i++) {
 		pid_t pids[num_cpus];
-		char buffer[1024];
-		int ret;
-		double dummy, voltage;
-		uint64_t delay = (i > 0) ? 1000000 / (scale * i) : 1000000 * 60;
-		double percent_each = 100.0 / samples_ctxt;
-		double percent = i * percent_each;
+		cpu_info_t *c;
+		uint32_t n_cpus;
 
-		snprintf(buffer, sizeof(buffer), "%.1f", scale * i);
+		for (n_cpus = 1, c = cpu_list.head; c; n_cpus++, c = c->next) {
+			char buffer[1024];
+			double dummy, dummy_ops;
+			uint64_t delay = (i > 0) ? 1000000 / (scale * i) : 1000000 * 60;
+			int ret;
+			double percent_each = 100.0 / (samples_ctxt * num_cpus);
+			double percent = n * percent_each;
 
-		memset(bogo_ops, 0, sizeof(bogo_ops_t) * num_cpus);
-		start_load(pids, 1, stress_ctxt, delay, bogo_ops);
-		ret = monitor(start_delay, max_readings, buffer, percent_each, percent,
-			bogo_ops, &dummy, &x, &tuple_ctxt->y, &voltage, &tuple_ops->y);
-		tuple_ctxt->x = tuple_ops->x = x;
-		stop_load(pids, 1);
-		if (stop_flag || (ret < 0))
-			return -1;
-		tuple_ctxt++;
-		tuple_ops++;
-		n++;
-		average_voltage += voltage;
+			snprintf(buffer, sizeof(buffer), "%d x %d", (int)scale * i, n_cpus);
+			start_load(pids, n_cpus, stress_ctxt, delay, bogo_ops);
+
+			ret = monitor(start_delay, max_readings, buffer,
+				percent_each, percent, bogo_ops,
+				&dummy, &value_ctxt->x,
+				&value_ctxt->y, &value_ctxt->voltage, &dummy_ops);
+			value_ctxt->cpu_id = c->cpu_id;
+			value_ctxt->cpus_used = n_cpus;
+
+			stop_load(pids, n_cpus);
+			if (stop_flag || (ret < 0))
+				return -1;
+			value_ctxt++;
+			n++;
+		}
 	}
 	/* Keep static analysis happy */
 	if (n <= 0) {
 		printf("\nZero samples, cannot compute statistics.\n");
 		return -1;
 	}
-	if (average_voltage == 0) {
-		printf("\nAverage voltage was zero, cannot compute statistics.\n");
-		return -1;
+
+
+	if (opt_flags & OPT_CALIBRATE_EACH_CPU) {
+		cpu_info_t *c;
+		int cpus_used = 0;
+
+		for (c = cpu_list.head, cpus_used = 1; c; c = c->next, cpus_used++) {
+			printf("\nFor %d CPU%s (of a %d CPU system):\n",
+				cpus_used, cpus_used > 1 ? "s" : "", max_cpus);
+			show_trend_by_ctxt(NULL, cpus_used, values_ctxt, n);
+		}
+	} else {
+		printf("\nFor %d CPU%s (of a %d CPU system):\n",
+			cpu_list.count, cpu_list.count > 1 ? "s" : "", max_cpus);
+		show_trend_by_ctxt(fp, CPU_ANY, values_ctxt, n);
 	}
-	average_voltage /= n;
-
-	calc_trend(tuples_ctxt, samples_ctxt, &gradient, &intercept, &r2);
-
-	units_to_str(gradient, "W", watts, sizeof(watts));
-	units_to_str(average_voltage, "V", volts, sizeof(volts));
-	units_to_str(gradient / average_voltage, "A", amps, sizeof(amps));
-
-	printf("\n");
-	printf("Power (Watts) = (context switches * %f) + %f\n", gradient, intercept);
-	printf("1 context switch is about %s (about %s @ %s)\n", watts, amps, volts);
-	printf("Coefficient of determination R^2 = %f (%s)\n", r2, coefficient_r2(r2));
-	printf("\n");
-
-	dump_json_values(fp, "context-switches", "one-context-switch", gradient, r2);
-
 	return 0;
 }
 
@@ -1637,7 +1738,7 @@ static int add_cpu_info(int cpu)
 	else
 		cpu_list.head = c;
 
-	c->cpu = cpu;
+	c->cpu_id = cpu;
 	cpu_list.tail = c;
 	cpu_list.count++;
 
@@ -1647,7 +1748,7 @@ static int add_cpu_info(int cpu)
 
 /*
  *  parse_cpu_info()
- *	parse cpu info 
+ *	parse cpu info
  */
 static int parse_cpu_info(char *arg)
 {
@@ -1664,7 +1765,7 @@ static int parse_cpu_info(char *arg)
 			fprintf(stderr, "Invalid CPU specified.\n");
 			return -1;
 		}
-		if (cpu < 0 || cpu > num_cpus - 1) {
+		if (cpu < 0 || cpu > max_cpus - 1) {
 			fprintf(stderr, "CPU number out of range.\n");
 			return -1;
 		}
@@ -1724,7 +1825,7 @@ int main(int argc, char * const argv[])
 	int ret = EXIT_FAILURE, i;
 	struct sigaction new_action;
 
-	num_cpus = sysconf(_SC_NPROCESSORS_CONF);
+	max_cpus = num_cpus = sysconf(_SC_NPROCESSORS_CONF);
 	if (num_cpus < 0) {
 		fprintf(stderr, "Cannot determine number of CPUs, errno=%d (%s).\n",
 			errno, strerror(errno));
@@ -1732,7 +1833,7 @@ int main(int argc, char * const argv[])
 	}
 
 	for (;;) {
-		int c = getopt(argc, argv, "cCd:hn:o:ps:S:r:");
+		int c = getopt(argc, argv, "cCd:ehn:o:ps:S:r:");
 		if (c == -1)
 			break;
 		switch (c) {
@@ -1748,6 +1849,9 @@ int main(int argc, char * const argv[])
 				fprintf(stderr, "Start delay must be 0 or more seconds.\n");
 				goto out;
 			}
+			break;
+		case 'e':
+			opt_flags |= OPT_CALIBRATE_EACH_CPU;
 			break;
 		case 'h':
 			show_help(argv);
