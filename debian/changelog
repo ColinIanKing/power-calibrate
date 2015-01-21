@@ -1,3 +1,17 @@
+power-calibrate (0.01.09-1) unstable; urgency=medium
+
+  * Makefile: Bump version
+  * Add more comments
+  * Guard against division by zero for 0 samples
+  * Update the manual, add more examples
+  * Make Ctxt/s field 1 char wider
+  * Remove the "calibrating" message, in fact, it's warming up
+  * Remove Voltage + Current Info, not really helpful or necessary
+  * Add -e option, re-work output
+  * Change the meaning of the -n option, now list the CPUs to run on.
+
+ -- Colin King <colin.king@canonical.com>  Wed, 21 Jan 2015 19:22:23 +0000
+
 power-calibrate (0.01.08-1) unstable; urgency=medium
 
   * Bump makefile version
