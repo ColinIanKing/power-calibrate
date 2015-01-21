@@ -1595,7 +1595,7 @@ static void show_trend_by_ctxt(
 	units_to_str(gradient / average_voltage, "A", amps, sizeof(amps));
 
 	printf("\n");
-	printf("  Power (Watts) = (context switches * %f) + %f\n", gradient, intercept);
+	printf("  Power (Watts) = (context switches * %e) + %f\n", gradient, intercept);
 	printf("  1 context switch is about %s (about %s @ %s)\n", watts, amps, volts);
 	printf("  Coefficient of determination R^2 = %f (%s)\n", r2, coefficient_r2(r2));
 
