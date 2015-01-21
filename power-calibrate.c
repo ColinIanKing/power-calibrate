@@ -1195,7 +1195,7 @@ static int monitor(
 		/* Gather up initial data */
 		for (i = 0; i < start_delay; i++) {
 			if (opt_flags & OPT_PROGRESS) {
-				fprintf(stdout, "%8.8s: test calibrating %5.1f%%..\r",
+				fprintf(stdout, "%8.8s: test warming up %5.1f%%..\r",
 					test, 100.0 * i / start_delay);
 				fflush(stdout);
 			}
