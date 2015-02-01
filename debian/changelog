@@ -1,3 +1,12 @@
+power-calibrate (0.01.10-1) unstable; urgency=medium
+
+  * Makefile: bump version
+  * Add more clarification about the -c mode.
+  * Print the gradient in %e as this generally small for context switches
+  * Add more clarifications in the manual.
+
+ -- Colin King <colin.king@canonical.com>  Sun, 1 Feb 2015 17:27:11 +0000
+
 power-calibrate (0.01.09-1) unstable; urgency=medium
 
   * Makefile: Bump version
