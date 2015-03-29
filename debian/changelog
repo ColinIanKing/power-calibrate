@@ -1,3 +1,10 @@
+power-calibrate (0.01.11-1) unstable; urgency=medium
+
+  * Makefile: bump version
+  * Add -R RAPL per CPU package power measurement
+
+ -- Colin King <colin.king@canonical.com>  Sun, 29 Mar 2015 16:40:00 +0100
+
 power-calibrate (0.01.10-1) unstable; urgency=medium
 
   * Makefile: bump version
