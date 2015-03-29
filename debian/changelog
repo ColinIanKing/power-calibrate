@@ -1,3 +1,10 @@
+power-calibrate (0.01.12-1) unstable; urgency=medium
+
+  * Makefile: bump version
+  * Fix non-x86 build, remove some redundant rapl code
+
+ -- Colin King <colin.king@canonical.com>  Sun, 29 Mar 2015 17:15:00 +0100
+
 power-calibrate (0.01.11-1) unstable; urgency=medium
 
   * Makefile: bump version
