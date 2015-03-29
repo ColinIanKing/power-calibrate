@@ -69,6 +69,10 @@
 #define OPT_CTXT_LOAD		(0x00000002)
 #define OPT_PROGRESS		(0x00000004)
 #define OPT_CALIBRATE_EACH_CPU	(0x00000008)
+#define OPT_RAPL		(0x00000010)
+
+#define MAX_POWER_DOMAINS	(16)
+#define MAX_POWER_VALUES	(MAX_POWER_DOMAINS + 1)
 
 #define CPU_USER		(0)
 #define CPU_NICE		(1)
@@ -81,14 +85,15 @@
 #define CPU_CTXT		(8)
 #define CPU_PROCS_RUN		(9)
 #define CPU_PROCS_BLK		(10)
-#define POWER_NOW		(11)
-#define VOLTAGE_NOW		(12)
-#define CURRENT_NOW 		(13)
-#define PROC_FORK		(14)
-#define PROC_EXEC		(15)
-#define PROC_EXIT		(16)
-#define BOGO_OPS		(17)
-#define MAX_VALUES		(18)
+#define VOLTAGE_NOW		(11)
+#define CURRENT_NOW 		(12)
+#define PROC_FORK		(13)
+#define PROC_EXEC		(14)
+#define PROC_EXIT		(15)
+#define BOGO_OPS		(16)
+#define POWER_NOW		(17)
+#define POWER_DOMAIN_0          (18)
+#define MAX_VALUES		(POWER_DOMAIN_0 + MAX_POWER_VALUES)
 
 #define MWC_SEED_Z		(362436069ULL)
 #define MWC_SEED_W		(521288629ULL)
@@ -102,6 +107,10 @@
 #define SYS_FIELD_CURRENT_NOW		"POWER_SUPPLY_CURRENT_NOW="
 #define SYS_FIELD_CHARGE_NOW		"POWER_SUPPLY_CHARGE_NOW="
 #define SYS_FIELD_STATUS_DISCHARGING  	"POWER_SUPPLY_STATUS=Discharging"
+
+#if defined(__x86_64__) || defined(__x86_64) || defined(__i386__) || defined(__i386)
+#define RAPL_X86
+#endif
 
 /* Measurement entry */
 typedef struct {
@@ -144,8 +153,20 @@ typedef struct cpu_list {
 	uint32_t	count;
 } cpu_list_t;
 
+/* RAPL domain info */
+typedef struct rapl_info {
+	char 		*name;
+	char 		*domain_name;
+	double 		max_energy_uj;
+	double 		last_energy_uj;
+	double 		t_last;
+	bool 		is_package;
+	struct rapl_info *next;
+} rapl_info_t;
+
 typedef void (*func)(uint64_t param, const uint32_t instance, bogo_ops_t *bogo_ops);
 
+static rapl_info_t *rapl_list = NULL;		/* RAPL domain info list */
 static int32_t sample_delay   = SAMPLE_DELAY;	/* time between each sample in secs */
 static volatile bool stop_flag;			/* sighandler stop flag */
 static int32_t num_cpus;			/* number of CPUs */
@@ -156,6 +177,8 @@ static int32_t samples_ctxt = CTXT_SAMPLES;
 static char *app_name = "power-calibrate";
 static bogo_ops_t *bogo_ops;
 static cpu_list_t cpu_list;
+static uint8_t power_domains = 0;		/* Number of power domains (RAPL) */
+static const char *(*get_domain)(const int i) = NULL;
 
 /*
  *  Attempt to catch a range of signals so
@@ -878,13 +901,15 @@ static void stats_average_stddev_min_max(
 }
 
 /*
- *  power_rate_get_sys_fs()
+ *  power_get_sys_fs()
  *	get power discharge rate from battery via /sys interface
  */
-static int power_rate_get_sys_fs(
-	double *const power_now,
+static int power_get_sys_fs(
+	stats_t *stats,
+	/*
 	double *const voltage_now,
 	double *const current_now,
+	*/
 	bool *const discharging,
 	bool *const inaccurate)
 {
@@ -894,9 +919,9 @@ static int power_rate_get_sys_fs(
 	double average_voltage = 0.0;
 	int n = 0;
 
-	*power_now = 0.0;
-	*voltage_now = 0.0;
-	*current_now = 0.0;
+	stats->value[POWER_NOW] = 0.0;
+	stats->value[VOLTAGE_NOW] = 0.0;
+	stats->value[CURRENT_NOW] = 0.0;
 	*discharging = false;
 	*inaccurate = true;
 
@@ -985,9 +1010,9 @@ static int power_rate_get_sys_fs(
 	 *  have to figure out anything from capacity change over time.
 	 */
 	if (total_watts > RATE_ZERO_LIMIT) {
-		*power_now = total_watts;
-		*voltage_now = average_voltage / (double)n;
-		*current_now = total_watts / average_voltage;
+		stats->value[POWER_NOW] = total_watts;
+		stats->value[VOLTAGE_NOW] = average_voltage / (double)n;
+		stats->value[CURRENT_NOW] = total_watts / average_voltage;
 		*inaccurate = (total_watts < 0.0);
 		return 0;
 	}
@@ -1002,13 +1027,11 @@ static int power_rate_get_sys_fs(
 }
 
 /*
- *  power_rate_get_proc_acpi()
+ *  power_get_proc_acpi()
  *	get power discharge rate from battery via /proc/acpi interface
  */
-static int power_rate_get_proc_acpi(
-	double *const power_now,
-	double *const voltage_now,
-	double *const current_now,
+static int power_get_proc_acpi(
+	stats_t *stats,
 	bool *const discharging,
 	bool *const inaccurate)
 {
@@ -1020,9 +1043,9 @@ static int power_rate_get_proc_acpi(
 	double average_voltage = 0.0;
 	int n = 0;
 
-	*power_now = 0.0;
-	*voltage_now = 0.0;
-	*current_now = 0.0;
+	stats->value[POWER_NOW] = 0.0;
+	stats->value[VOLTAGE_NOW] = 0.0;
+	stats->value[CURRENT_NOW] = 0.0;
 	*discharging = false;
 	*inaccurate = true;
 
@@ -1117,9 +1140,9 @@ static int power_rate_get_proc_acpi(
 	 * time.
 	 */
 	if (total_watts > RATE_ZERO_LIMIT) {
-		*power_now = total_watts;
-		*voltage_now = average_voltage / (double)n;
-		*current_now = total_watts / average_voltage;
+		stats->value[POWER_NOW] = total_watts;
+		stats->value[VOLTAGE_NOW] = average_voltage / (double)n;
+		stats->value[CURRENT_NOW] = total_watts / average_voltage;
 		*inaccurate = (total_watts < 0.0);
 		return 0;
 	}
@@ -1133,26 +1156,225 @@ static int power_rate_get_proc_acpi(
 	return -1;
 }
 
+#if defined(RAPL_X86)
+
 /*
- *  power_rate_get()
+ *  rapl_free_list()
+ *	free RAPL list
+ */
+void rapl_free_list(void)
+{
+	rapl_info_t *rapl = rapl_list;
+
+	while (rapl) {
+		rapl_info_t *next = rapl->next;
+
+		free(rapl->name);
+		free(rapl->domain_name);
+		free(rapl);
+		rapl = next;
+	}
+}
+
+static const char *rapl_get_domain(const int n)
+{
+	int i;
+	static char buf[128];
+
+	rapl_info_t *rapl = rapl_list;
+
+	for (i = 0; i < n && rapl; i++) {
+		rapl = rapl->next;
+	}
+	if (rapl) {
+		if (rapl->is_package) {
+			snprintf(buf, sizeof(buf), "pkg-%s", rapl->domain_name + 8);
+			return buf;
+		}
+		return rapl->domain_name;
+	}
+	return "unknown";
+}
+
+/*
+ *  rapl_get_domains()
+ */
+static int rapl_get_domains(void)
+{
+	DIR *dir;
+        struct dirent *entry;
+	int n = 0;
+
+	dir = opendir("/sys/class/powercap");
+	if (dir == NULL) {
+		printf("Device does not have RAPL, cannot measure power usage.\n");
+		return -1;
+	}
+
+	while ((entry = readdir(dir)) != NULL) {
+		char path[PATH_MAX];
+		FILE *fp;
+		rapl_info_t *rapl;
+
+		/* Ignore non Intel RAPL interfaces */
+		if (strncmp(entry->d_name, "intel-rapl", 10))
+			continue;
+
+		if ((rapl = calloc(1, sizeof(*rapl))) == NULL) {
+			fprintf(stderr, "Cannot allocate RAPL information.\n");
+			closedir(dir);
+			return -1;
+		}
+		if ((rapl->name = strdup(entry->d_name)) == NULL) {
+			fprintf(stderr, "Cannot allocate RAPL name information.\n");
+			closedir(dir);
+			free(rapl);
+			return -1;
+		}
+		snprintf(path, sizeof(path),
+			"/sys/class/powercap/%s/max_energy_range_uj",
+			entry->d_name);
+
+		rapl->max_energy_uj = 0.0;
+		if ((fp = fopen(path, "r")) != NULL) {
+			if (fscanf(fp, "%lf\n", &rapl->max_energy_uj) != 1)
+				rapl->max_energy_uj = 0.0;
+			(void)fclose(fp);
+		}
+		snprintf(path, sizeof(path),
+			"/sys/class/powercap/%s/name",
+			entry->d_name);
+
+		rapl->domain_name = NULL;
+		if ((fp = fopen(path, "r")) != NULL) {
+			char domain_name[128];
+
+			if (fgets(domain_name, sizeof(domain_name), fp) != NULL) {
+				domain_name[strcspn(domain_name, "\n")] = '\0';
+				rapl->domain_name = strdup(domain_name);
+			}
+			(void)fclose(fp);
+		}
+		if (rapl->domain_name == NULL) {
+			free(rapl->name);
+			free(rapl);
+			continue;
+		}
+
+		rapl->is_package = (strncmp(rapl->domain_name, "package-", 8) == 0);
+		rapl->next = rapl_list;
+		rapl_list = rapl;
+		n++;
+	}
+	(void)closedir(dir);
+	power_domains = n;
+
+	if (!n)
+		printf("Device does not have any RAPL domains, cannot power measure power usage.\n");
+	return n;
+}
+
+/*
+ *  power_get_rapl()
+ *	get power discharge rate from battery via the RAPL interface
+ */
+static int power_get_rapl(
+	stats_t *stats,
+	bool *const discharging)
+{
+	double t_now;
+	static bool first = true;
+	rapl_info_t *rapl;
+	int n = 0;
+
+	stats->inaccurate[POWER_NOW] = false;	/* Assume OK until found otherwise */
+	stats->value[POWER_NOW] = 0.0;
+	get_domain = rapl_get_domain;
+	*discharging = false;
+
+	t_now = gettime_to_double();
+
+	for (rapl = rapl_list; rapl; rapl = rapl->next) {
+		char path[PATH_MAX];
+		FILE *fp;
+		double ujoules;
+
+		snprintf(path, sizeof(path),
+			"/sys/class/powercap/%s/energy_uj",
+			rapl->name);
+
+		if ((fp = fopen(path, "r")) == NULL)
+			continue;
+
+		if (fscanf(fp, "%lf\n", &ujoules) == 1) {
+			double t_delta = t_now - rapl->t_last;
+			double last_energy_uj = rapl->last_energy_uj;
+
+			rapl->t_last = t_now;
+
+			/* Wrapped around since last time? */
+			if (ujoules - rapl->last_energy_uj < 0.0) {
+				rapl->last_energy_uj = ujoules;
+				ujoules += rapl->max_energy_uj;
+			} else {
+				rapl->last_energy_uj = ujoules;
+			}
+
+			if (first || (t_delta <= 0.0)) {
+				stats->value[POWER_DOMAIN_0 + n] = 0.0;
+				stats->inaccurate[POWER_NOW] = true;
+			} else {
+				stats->value[POWER_DOMAIN_0 + n] =
+					(ujoules - last_energy_uj) / (t_delta * 1000000.0);
+			}
+			if (rapl->is_package)
+				stats->value[POWER_NOW] += stats->value[POWER_DOMAIN_0 + n];
+			n++;
+			*discharging = true;
+		}
+		fclose(fp);
+	}
+
+	if (first) {
+		stats->inaccurate[POWER_NOW] = true;
+		first = false;
+	}
+
+	if (!n) {
+		printf("Device does not have any RAPL domains, cannot power measure power usage.\n");
+		return -1;
+	}
+	return 0;
+}
+#endif
+/*
+ *  power_get()
  *	get consumption rate
  */
-static int power_rate_get(
-	double *const power_now,
-	double *const voltage_now,
-	double *const current_now,
+static int power_get(
+	stats_t *stats,
 	bool *const discharging,
 	bool *const inaccurate)
 {
 	struct stat buf;
+	int i;
+
+	for (i = POWER_NOW; i < MAX_VALUES; i++) {
+		stats->value[i] = i;
+		stats->inaccurate[i] = 0.0;
+	}
+#if defined(RAPL_X86)
+	if (opt_flags & OPT_RAPL)
+		return power_get_rapl(stats, discharging);
+#endif
 
 	if ((stat(SYS_CLASS_POWER_SUPPLY, &buf) != -1) &&
 	    S_ISDIR(buf.st_mode))
-		return power_rate_get_sys_fs(power_now, voltage_now, current_now, discharging, inaccurate);
+		return power_get_sys_fs(stats, discharging, inaccurate);
 
 	if ((stat(PROC_ACPI_BATTERY, &buf) != -1) &&
 	    S_ISDIR(buf.st_mode))
-		return power_rate_get_proc_acpi(power_now, voltage_now, current_now, discharging, inaccurate);
+		return power_get_proc_acpi(stats, discharging, inaccurate);
 
 	fprintf(stderr, "Machine does not seem to have a battery, cannot measure power.\n");
 	return -1;
@@ -1164,10 +1386,10 @@ static int power_rate_get(
  */
 static inline bool not_discharging(void)
 {
-	double power, voltage, current;
+	stats_t dummy;
 	bool discharging, inaccurate;
 
-	return power_rate_get(&power, &voltage, &current, &discharging, &inaccurate) < 0;
+	return power_get(&dummy, &discharging, &inaccurate) < 0;
 }
 
 /*
@@ -1191,10 +1413,10 @@ static int monitor(
 	int64_t t = 1;
 	stats_t *stats, s1, s2, average, stddev;
 	bool discharging, dummy_inaccurate;
-	double dummy_power, dummy_voltage, dummy_current;
 	double time_start;
 
 	if (start_delay > 0) {
+		stats_t dummy;
 		/* Gather up initial data */
 		for (i = 0; i < start_delay; i++) {
 			if (opt_flags & OPT_PROGRESS) {
@@ -1202,8 +1424,7 @@ static int monitor(
 					test, 100.0 * i / start_delay);
 				fflush(stdout);
 			}
-			if (power_rate_get(&dummy_power, &dummy_voltage, &dummy_current,
-					   &discharging, &dummy_inaccurate) < 0)
+			if (power_get(&dummy, &discharging, &dummy_inaccurate) < 0)
 				return -1;
 			if (sleep(1) || stop_flag)
 				return -1;
@@ -1290,11 +1511,8 @@ sample_now:
 				continue;
 			}
 
-			if (power_rate_get(&stats[readings].value[POWER_NOW],
-					   &stats[readings].value[VOLTAGE_NOW],
-					   &stats[readings].value[CURRENT_NOW],
-					   &discharging,
-					   &stats[readings].inaccurate[POWER_NOW]) < 0) {
+			if (power_get(&stats[readings], &discharging,
+				      &stats[readings].inaccurate[POWER_NOW]) < 0) {
 				free(stats);
 				return -1; 	/* Failure to read */
 			}
@@ -1404,6 +1622,7 @@ static void show_help(char *const argv[])
 	printf(" -o file  output results into json formatted file\n");
 	printf(" -p       show progress\n");
 	printf(" -r secs  specify run duration in seconds of each test cycle\n");
+	printf(" -R       use Intel RAPL per CPU package data to measure Watts\n");
 	printf(" -s num   number of samples (tests) per CPU for CPU calibration\n");
 	printf(" -S num   number of samples (tests) per CPU for context switch calibration\n");
 }
@@ -1501,10 +1720,9 @@ static double calc_average_voltage(
 	}
 	average = (n == 0) ? 0.0 : average / n;
 
-	if (average == 0.0) {
-		printf("\nAverage voltage was zero, cannot compute statistics.\n");
+	if (average == 0.0)
 		return -1;
-	}
+
 	return average;
 }
 
@@ -1522,18 +1740,19 @@ static void show_trend_by_load(
 	double gradient, intercept, r2;
 	double average_voltage = calc_average_voltage(cpus_used, values, num_values);
 
-	if (average_voltage < 0)
-		return;
-
 	if (calc_trend(cpus_used, values, num_values, &gradient, &intercept, &r2) < 0)
 		return;
 
 	units_to_str(gradient, "W", watts, sizeof(watts));
-	units_to_str(average_voltage, "V", volts, sizeof(volts));
-	units_to_str(gradient / average_voltage, "A", amps, sizeof(amps));
 
 	printf("  Power (Watts) = (%% CPU load * %f) + %f\n", gradient, intercept);
-	printf("  Each 1%% CPU load is about %s (about %s @ %s)\n", watts, amps, volts);
+	if (average_voltage > 0) {
+		units_to_str(average_voltage, "V", volts, sizeof(volts));
+		units_to_str(gradient / average_voltage, "A", amps, sizeof(amps));
+		printf("  Each 1%% CPU load is about %s (about %s @ %s)\n", watts, amps, volts);
+	} else {
+		printf("  Each 1%% CPU load is about %s\n", watts);
+	}
 	printf("  Coefficient of determination R^2 = %f (%s)\n", r2, coefficient_r2(r2));
 
 	dump_json_values(fp, "cpu-load", "one-percent-cpu-load", gradient, r2);
@@ -1555,18 +1774,19 @@ static void show_trend_by_ops(
 
 	(void)fp;
 
-	if (average_voltage < 0)
-		return;
-
 	if (calc_trend(cpus_used, values, num_values, &gradient, &intercept, &r2) < 0)
 		return;
 
 	units_to_str(gradient, "W", watts, sizeof(watts));
-	units_to_str(average_voltage, "V", volts, sizeof(volts));
-	units_to_str(gradient / average_voltage, "A", amps, sizeof(amps));
 
 	printf("  Power (Watts) = (bogo op * %e) + %f\n", gradient, intercept);
-	printf("  1 bogo ops is about %s (about %s @ %s)\n", watts, amps, volts);
+	if (average_voltage > 0) {
+		units_to_str(average_voltage, "V", volts, sizeof(volts));
+		units_to_str(gradient / average_voltage, "A", amps, sizeof(amps));
+		printf("  1 bogo op is about %s (about %s @ %s)\n", watts, amps, volts);
+	} else {
+		printf("  1 bogo op is about %s\n", watts);
+	}
 	printf("  Coefficient of determination R^2 = %f (%s)\n", r2, coefficient_r2(r2));
 }
 
@@ -1584,19 +1804,20 @@ static void show_trend_by_ctxt(
 	double gradient, intercept, r2;
 	double average_voltage = calc_average_voltage(cpus_used, values, num_values);
 
-	if (average_voltage < 0)
-		return;
-
 	if (calc_trend(cpus_used, values, num_values, &gradient, &intercept, &r2) < 0)
 		return;
 
 	units_to_str(gradient, "W", watts, sizeof(watts));
-	units_to_str(average_voltage, "V", volts, sizeof(volts));
-	units_to_str(gradient / average_voltage, "A", amps, sizeof(amps));
 
 	printf("\n");
 	printf("  Power (Watts) = (context switches * %e) + %f\n", gradient, intercept);
-	printf("  1 context switch is about %s (about %s @ %s)\n", watts, amps, volts);
+	if (average_voltage > 0) {
+		units_to_str(average_voltage, "V", volts, sizeof(volts));
+		units_to_str(gradient / average_voltage, "A", amps, sizeof(amps));
+		printf("  1 context switch is about %s (about %s @ %s)\n", watts, amps, volts);
+	} else {
+		printf("  1 context switch is about %s\n", watts);
+	}
 	printf("  Coefficient of determination R^2 = %f (%s)\n", r2, coefficient_r2(r2));
 
 	dump_json_values(fp, "context-switches", "one-context-switch", gradient, r2);
@@ -1865,7 +2086,7 @@ int main(int argc, char * const argv[])
 	}
 
 	for (;;) {
-		int c = getopt(argc, argv, "cCd:ehn:o:ps:S:r:");
+		int c = getopt(argc, argv, "cCd:ehn:o:ps:S:r:R");
 		if (c == -1)
 			break;
 		switch (c) {
@@ -1906,6 +2127,9 @@ int main(int argc, char * const argv[])
 				goto out;
 			}
 			break;
+		case 'R':
+			opt_flags |= OPT_RAPL;
+			break;
 		case 's':
 			samples_cpu = atoi(optarg);
 			if ((samples_cpu < 3.0) || (samples_cpu > MAX_CPU_LOAD)) {
@@ -1927,6 +2151,9 @@ int main(int argc, char * const argv[])
 	}
 
 	populate_cpu_info();
+
+	if ((opt_flags & OPT_RAPL) && (rapl_get_domains() < 1))
+		exit(EXIT_FAILURE);
 
 	if (!(opt_flags & (OPT_CPU_LOAD | OPT_CTXT_LOAD))) {
 		fprintf(stderr, "Requires -c or -C option(s).\n");

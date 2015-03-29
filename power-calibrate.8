@@ -26,8 +26,7 @@ power-calibrate \- a tool to calibrate power consumption.
 .br
 
 .SH DESCRIPTION
-Power-calibrate calibrates the power consumption of a mobile device that has a battery power source.  It will attempt to calculate the power usage of 1% of CPU utiltisation and 1 context switch.  Power-calibrate can only be run on a 
-battery powered system as it uses battery drain rates to estimate power consumption.
+Power-calibrate calibrates the power consumption of a mobile device that has a battery power source or a recent Intel processor using the RAPL (Running Average Power Limit) interface.  It will attempt to calculate the power usage of 1% of CPU utiltisation and 1 context switch.
 
 .SH OPTIONS
 power-calibrate options are as follow:
@@ -58,6 +57,11 @@ show progress. This will display the progress in terms of % completion of a test
 .TP
 .B \-r secs
 Set run duration. Normally, the default of 120 seconds is suitable for most laptop devices where discharge rates from the battery can be fairly accurately determined over this duration.  Setting this to a shorter duration will complete the calibration tests in less time but may be less accurate.
+.TP
+.B \-R
+read power statistics from the RAPL (Running Average Power Limit) domains. This is supported
+by recent Linux kernels and Sandybridge and later Intel processors.  This option just measures
+the per processor package power utilization so the readings do not cover the entire machine.
 .TP
 .B \-s samples
 specify the number of samples for the CPU (\-c) test. The CPU test will measure 0% to 100% CPU loading across 1..number of CPUs. The number of test rounds to be done per CPU is controlled by the samples value.  If samples is low then less data points are gathered for the calculation of the power utilisation and this leads to less accurate results.
@@ -144,6 +148,11 @@ l l.
 3 CPUs:	CPUs 0,2,1
 4 CPUs:	CPUs 0,2,1,3
 .TE
+.LP
+power-calibrate  -R -c -r 10 -d 5 -s 21 -n 0 -p
+.RS
+Measure per-CPU package Watts consumed using the Intel RAPL interface. This example has a 5 second warm-up delay per test round, 21 tests in the CPU load level (0%, 5%, 10%, .., 95%, 100%) on CPUs 0 with a 10 second run time per test round while showing progress.
+
 .SH BUGS
 Power-calibrate attempts to find a linear relationship between power consumed and the CPU loading, bogo operations per second and the context switching.  This is not necessarily the case for all processors. If the R^2 coefficient of determination is not close to 1.0 then this indicates there may not be a linear relationship.
 .SH NOTES
