@@ -166,7 +166,6 @@ typedef struct rapl_info {
 
 typedef void (*func)(uint64_t param, const uint32_t instance, bogo_ops_t *bogo_ops);
 
-static rapl_info_t *rapl_list = NULL;		/* RAPL domain info list */
 static int32_t sample_delay   = SAMPLE_DELAY;	/* time between each sample in secs */
 static volatile bool stop_flag;			/* sighandler stop flag */
 static int32_t num_cpus;			/* number of CPUs */
@@ -177,8 +176,10 @@ static int32_t samples_ctxt = CTXT_SAMPLES;
 static char *app_name = "power-calibrate";
 static bogo_ops_t *bogo_ops;
 static cpu_list_t cpu_list;
+#if defined(RAPL_X86)
+static rapl_info_t *rapl_list = NULL;		/* RAPL domain info list */
 static uint8_t power_domains = 0;		/* Number of power domains (RAPL) */
-static const char *(*get_domain)(const int i) = NULL;
+#endif
 
 /*
  *  Attempt to catch a range of signals so
@@ -1176,26 +1177,6 @@ void rapl_free_list(void)
 	}
 }
 
-static const char *rapl_get_domain(const int n)
-{
-	int i;
-	static char buf[128];
-
-	rapl_info_t *rapl = rapl_list;
-
-	for (i = 0; i < n && rapl; i++) {
-		rapl = rapl->next;
-	}
-	if (rapl) {
-		if (rapl->is_package) {
-			snprintf(buf, sizeof(buf), "pkg-%s", rapl->domain_name + 8);
-			return buf;
-		}
-		return rapl->domain_name;
-	}
-	return "unknown";
-}
-
 /*
  *  rapl_get_domains()
  */
@@ -1289,7 +1270,6 @@ static int power_get_rapl(
 
 	stats->inaccurate[POWER_NOW] = false;	/* Assume OK until found otherwise */
 	stats->value[POWER_NOW] = 0.0;
-	get_domain = rapl_get_domain;
 	*discharging = false;
 
 	t_now = gettime_to_double();
@@ -1622,7 +1602,9 @@ static void show_help(char *const argv[])
 	printf(" -o file  output results into json formatted file\n");
 	printf(" -p       show progress\n");
 	printf(" -r secs  specify run duration in seconds of each test cycle\n");
+#if defined(RAPL_X86)
 	printf(" -R       use Intel RAPL per CPU package data to measure Watts\n");
+#endif
 	printf(" -s num   number of samples (tests) per CPU for CPU calibration\n");
 	printf(" -S num   number of samples (tests) per CPU for context switch calibration\n");
 }
@@ -2127,9 +2109,11 @@ int main(int argc, char * const argv[])
 				goto out;
 			}
 			break;
+#if defined(RAPL_X86)
 		case 'R':
 			opt_flags |= OPT_RAPL;
 			break;
+#endif
 		case 's':
 			samples_cpu = atoi(optarg);
 			if ((samples_cpu < 3.0) || (samples_cpu > MAX_CPU_LOAD)) {
@@ -2152,8 +2136,10 @@ int main(int argc, char * const argv[])
 
 	populate_cpu_info();
 
+#if defined(RAPL_X86)
 	if ((opt_flags & OPT_RAPL) && (rapl_get_domains() < 1))
 		exit(EXIT_FAILURE);
+#endif
 
 	if (!(opt_flags & (OPT_CPU_LOAD | OPT_CTXT_LOAD))) {
 		fprintf(stderr, "Requires -c or -C option(s).\n");
