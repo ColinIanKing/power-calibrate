@@ -820,7 +820,7 @@ static bool stats_gather(
  */
 static void stats_headings(const char *test)
 {
-	printf("%8.8s  User   Sys  Idle  Run  Ctxt/s  IRQ/s  Ops/s  Watts\n", test);
+	printf("%10.10s  User   Sys  Idle  Run  Ctxt/s  IRQ/s  Ops/s  Watts\n", test);
 }
 
 /*
@@ -848,8 +848,8 @@ static void stats_print(
 	uint64_to_str(s->value[BOGO_OPS], str, sizeof(str));
 
 	fmt = summary ?
-		"%8.8s %5.1f %5.1f %5.1f %4.1f %7.1f %6.1f %6s %s\n" :
-		"%8.8s %5.1f %5.1f %5.1f %4.0f %7.0f %6.0f %6s %s\n";
+		"%10.10s %5.1f %5.1f %5.1f %4.1f %7.1f %6.1f %6s %s\n" :
+		"%10.10s %5.1f %5.1f %5.1f %4.0f %7.0f %6.0f %6s %s\n";
 	printf(fmt,
 		prefix,
 		s->value[CPU_USER], s->value[CPU_SYS], s->value[CPU_IDLE],
@@ -1400,7 +1400,7 @@ static int monitor(
 		/* Gather up initial data */
 		for (i = 0; i < start_delay; i++) {
 			if (opt_flags & OPT_PROGRESS) {
-				fprintf(stdout, "%8.8s: test warming up %5.1f%%..\r",
+				fprintf(stdout, "%10.10s: test warming up %5.1f%%..\r",
 					test, 100.0 * i / start_delay);
 				fflush(stdout);
 			}
@@ -1446,7 +1446,7 @@ static int monitor(
 
 		if (opt_flags & OPT_PROGRESS) {
 			double progress = readings * 100.0 / max_readings;
-			fprintf(stdout, "%8.8s: test progress %5.1f%% (total progress %6.2f%%)\r",
+			fprintf(stdout, "%10.10s: test progress %5.1f%% (total progress %6.2f%%)\r",
 				test, progress, (progress * percent_each / 100.0) + percent);
 			fflush(stdout);
 		}
