@@ -1,9 +1,16 @@
+power-calibrate (0.01.14-1) unstable; urgency=medium
+
+  * Prepare for initial upload to Debian (Closes: #782734)
+  * Makefile: bump version
+
+ -- Colin King <colin.king@canonical.com>  Thu, 16 Apr 2015 16:29:00 +0500
+
 power-calibrate (0.01.13-1) unstable; urgency=medium
 
   * Makefile: bump version
   * Make a larger field for load x number of processors.
 
- -- Colin King <colin.king@canonical.com>  Thu, 16 Apr 2015 14:20:00 +0500
+ -- Colin King <colin.king@canonical.com>  Thu, 16 Apr 2015 16:20:00 +0500
 
 power-calibrate (0.01.12-1) unstable; urgency=medium
 
