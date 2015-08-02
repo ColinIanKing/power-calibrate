@@ -65,11 +65,9 @@
 
 #define DETECT_DISCHARGING	(1)
 
-#define OPT_CPU_LOAD		(0x00000001)
-#define OPT_CTXT_LOAD		(0x00000002)
-#define OPT_PROGRESS		(0x00000004)
-#define OPT_CALIBRATE_EACH_CPU	(0x00000008)
-#define OPT_RAPL		(0x00000010)
+#define OPT_PROGRESS		(0x00000002)
+#define OPT_CALIBRATE_EACH_CPU	(0x00000004)
+#define OPT_RAPL		(0x00000008)
 
 #define MAX_POWER_DOMAINS	(16)
 #define MAX_POWER_VALUES	(MAX_POWER_DOMAINS + 1)
@@ -172,7 +170,6 @@ static int32_t num_cpus;			/* number of CPUs */
 static int32_t max_cpus;			/* number of CPUs in system */
 static int32_t opt_flags;			/* command options */
 static int32_t samples_cpu = 11.0;
-static int32_t samples_ctxt = CTXT_SAMPLES;
 static char *app_name = "power-calibrate";
 static bogo_ops_t *bogo_ops;
 static cpu_list_t cpu_list;
@@ -436,73 +433,6 @@ static void stress_cpu(
 		delay *= (((100.0 / (double) cpu_load)) - 1.0);
 		tv = double_to_timeval(delay);
 		select(0, NULL, NULL, NULL, &tv);
-	}
-	exit(EXIT_SUCCESS);
-}
-
-/*
- *  stress_ctxt
- *	generate context switches by periodic wakeups
- */
-static void stress_ctxt(
-	const uint64_t delay,
-	const uint32_t instance,
-	bogo_ops_t *bogo_ops)
-{
-	pid_t pid;
-	int pipefds[2];
-
-	if (pipe(pipefds) < 0) {
-		fprintf(stderr, "stress_ctxt: pipe failed, errno=%d (%s).\n",
-			errno, strerror(errno));
-		exit(EXIT_FAILURE);
-	}
-
-	pid = fork();
-	if (pid < 0) {
-		(void)close(pipefds[0]);
-		(void)close(pipefds[1]);
-		exit(EXIT_FAILURE);
-	} else if (pid == 0) {
-		/* Child, immediately exit */
-		(void)close(pipefds[1]);
-
-		for (;;) {
-			char ch;
-
-			for (;;) {
-				if (read(pipefds[0], &ch, sizeof(ch)) <= 0)
-					break;	/* happens on pipe breakage */
-				bogo_ops[instance].ops++;
-				if (stop_flag || (ch == CTXT_STOP))
-					break;
-			}
-			(void)close(pipefds[0]);
-			exit(EXIT_SUCCESS);
-		}
-	} else {
-		char ch = '_';
-
-		/* Parent */
-		(void)close(pipefds[0]);
-
-		while (!stop_flag) {
-			if (write(pipefds[1],  &ch, sizeof(ch)) < 0) {
-				fprintf(stderr, "stress_ctxt: write failed, errno=%d (%s).\n",
-					errno, strerror(errno));
-				break;
-			}
-			struct timeval tv;
-			tv.tv_sec = delay / 1000000;
-			tv.tv_usec = delay % 1000000;
-			select(0, NULL, NULL, NULL, &tv);
-		}
-
-		ch = CTXT_STOP;
-		if (write(pipefds[1],  &ch, sizeof(ch)) <= 0)
-			fprintf(stderr, "stress_ctxt: termination write failed, errno=%d %s\n",
-				errno, strerror(errno));
-		kill(pid, SIGKILL);
 	}
 	exit(EXIT_SUCCESS);
 }
@@ -1588,8 +1518,6 @@ static void show_help(char *const argv[])
 {
 	printf("%s, version %s\n\n", app_name, VERSION);
 	printf("usage: %s [options]\n", argv[0]);
-	printf(" -c       calibrate CPU power usage\n");
-	printf(" -C       calibrate context switch power usage\n");
 	printf(" -d secs  specify delay before starting, default is %d seconds\n", START_DELAY);
 	printf(" -h show  help\n");
 	printf(" -n cpus  specify number of CPUs\n");
@@ -1600,7 +1528,6 @@ static void show_help(char *const argv[])
 	printf(" -R       use Intel RAPL per CPU package data to measure Watts\n");
 #endif
 	printf(" -s num   number of samples (tests) per CPU for CPU calibration\n");
-	printf(" -S num   number of samples (tests) per CPU for context switch calibration\n");
 }
 
 /*
@@ -1767,39 +1694,6 @@ static void show_trend_by_ops(
 }
 
 /*
- *  show_trend_by_load()
- *	Show power trends by context switches/s
- */
-static void show_trend_by_ctxt(
-	FILE *fp,
-	const int cpus_used,
-	value_t *values,
-	const int num_values)
-{
-	char watts[16], amps[16], volts[16];
-	double gradient, intercept, r2;
-	double average_voltage = calc_average_voltage(cpus_used, values, num_values);
-
-	if (calc_trend(cpus_used, values, num_values, &gradient, &intercept, &r2) < 0)
-		return;
-
-	units_to_str(gradient, "W", watts, sizeof(watts));
-
-	printf("\n");
-	printf("  Power (Watts) = (context switches * %e) + %f\n", gradient, intercept);
-	if (average_voltage > 0) {
-		units_to_str(average_voltage, "V", volts, sizeof(volts));
-		units_to_str(gradient / average_voltage, "A", amps, sizeof(amps));
-		printf("  1 context switch is about %s (about %s @ %s)\n", watts, amps, volts);
-	} else {
-		printf("  1 context switch is about %s\n", watts);
-	}
-	printf("  Coefficient of determination R^2 = %f (%s)\n", r2, coefficient_r2(r2));
-
-	dump_json_values(fp, "context-switches", "one-context-switch", gradient, r2);
-}
-
-/*
  *  monitor_cpu_load()
  *	load CPU(s) and gather stats
  */
@@ -1872,75 +1766,6 @@ static int monitor_cpu_load(
 		show_trend_by_load(fp, CPU_ANY, values_load, n);
 		printf("\n");
 		show_trend_by_ops(fp, CPU_ANY, values_ops, n);
-	}
-	return 0;
-}
-
-/*
- *  monitor_ctxt_load()
- *	load CPU(s) with context switches and gather stats
- */
-static int monitor_ctxt_load(
-	FILE *fp,
-	const int start_delay,
-	const int max_readings,
-	bogo_ops_t *bogo_ops)
-{
-	uint32_t i, n = 0;
-	value_t	 values_ctxt[num_cpus * samples_ctxt], *value_ctxt = values_ctxt;
-	double scale = 1000.0 / (samples_ctxt - 1);
-
-	stats_headings("Wakeups");
-	for (i = 0; i < (uint32_t)samples_ctxt; i++) {
-		pid_t pids[num_cpus];
-		cpu_info_t *c;
-		uint32_t n_cpus;
-
-		for (n_cpus = 1, c = cpu_list.head; c; n_cpus++, c = c->next) {
-			char buffer[1024];
-			double dummy, dummy_ops;
-			uint64_t delay = (i > 0) ? 1000000 / (scale * i) : 1000000 * 60;
-			int ret;
-			double percent_each = 100.0 / (samples_ctxt * num_cpus);
-			double percent = n * percent_each;
-
-			snprintf(buffer, sizeof(buffer), "%d x %d", (int)scale * i, n_cpus);
-			start_load(pids, n_cpus, stress_ctxt, delay, bogo_ops);
-
-			ret = monitor(start_delay, max_readings, buffer,
-				percent_each, percent, bogo_ops,
-				&dummy, &value_ctxt->x,
-				&value_ctxt->y, &value_ctxt->voltage, &dummy_ops);
-			value_ctxt->cpu_id = c->cpu_id;
-			value_ctxt->cpus_used = n_cpus;
-
-			stop_load(pids, n_cpus);
-			if (stop_flag || (ret < 0))
-				return -1;
-			value_ctxt++;
-			n++;
-		}
-	}
-	/* Keep static analysis happy */
-	if (n <= 0) {
-		printf("\nZero samples, cannot compute statistics.\n");
-		return -1;
-	}
-
-
-	if (opt_flags & OPT_CALIBRATE_EACH_CPU) {
-		cpu_info_t *c;
-		int cpus_used = 0;
-
-		for (c = cpu_list.head, cpus_used = 1; c; c = c->next, cpus_used++) {
-			printf("\nFor %d CPU%s (of a %d CPU system):\n",
-				cpus_used, cpus_used > 1 ? "s" : "", max_cpus);
-			show_trend_by_ctxt(NULL, cpus_used, values_ctxt, n);
-		}
-	} else {
-		printf("\nFor %d CPU%s (of a %d CPU system):\n",
-			cpu_list.count, cpu_list.count > 1 ? "s" : "", max_cpus);
-		show_trend_by_ctxt(fp, CPU_ANY, values_ctxt, n);
 	}
 	return 0;
 }
@@ -2062,16 +1887,10 @@ int main(int argc, char * const argv[])
 	}
 
 	for (;;) {
-		int c = getopt(argc, argv, "cCd:ehn:o:ps:S:r:R");
+		int c = getopt(argc, argv, "d:ehn:o:ps:r:R");
 		if (c == -1)
 			break;
 		switch (c) {
-		case 'c':
-			opt_flags |= OPT_CPU_LOAD;
-			break;
-		case 'C':
-			opt_flags |= OPT_CTXT_LOAD;
-			break;
 		case 'd':
 			start_delay = atoi(optarg);
 			if (start_delay < 0) {
@@ -2115,13 +1934,6 @@ int main(int argc, char * const argv[])
 				goto out;
 			}
 			break;
-		case 'S':
-			samples_ctxt = atoi(optarg);
-			if ((samples_ctxt < 3.0) || (samples_ctxt > CTXT_SAMPLES)) {
-				fprintf(stderr, "Samples for context switches out of range.\n");
-				goto out;
-			}
-			break;
 		default:
 			show_help(argv);
 			goto out;
@@ -2134,11 +1946,6 @@ int main(int argc, char * const argv[])
 	if ((opt_flags & OPT_RAPL) && (rapl_get_domains() < 1))
 		exit(EXIT_FAILURE);
 #endif
-
-	if (!(opt_flags & (OPT_CPU_LOAD | OPT_CTXT_LOAD))) {
-		fprintf(stderr, "Requires -c or -C option(s).\n");
-		goto out;
-	}
 
 	if (optind < argc) {
 		sample_delay = atoi(argv[optind++]);
@@ -2185,12 +1992,8 @@ int main(int argc, char * const argv[])
 	if (not_discharging())
 		goto out;
 
-	if (opt_flags & OPT_CPU_LOAD)
-		if (monitor_cpu_load(fp, start_delay, max_readings, bogo_ops) < 0)
-			goto out;
-	if (opt_flags & OPT_CTXT_LOAD)
-		if (monitor_ctxt_load(fp, start_delay, max_readings, bogo_ops) < 0)
-			goto out;
+	if (monitor_cpu_load(fp, start_delay, max_readings, bogo_ops) < 0)
+		goto out;
 
 	ret = EXIT_SUCCESS;
 out:
