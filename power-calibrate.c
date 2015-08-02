@@ -349,7 +349,7 @@ static void handle_sig(int dummy)
  *  set_affinity()
  *	set cpu affinity
  */
-static int set_affinity(int cpu)
+static int set_affinity(const int cpu)
 {
 	cpu_set_t mask;
 	int ret;
@@ -831,10 +831,6 @@ static void stats_average_stddev_min_max(
  */
 static int power_get_sys_fs(
 	stats_t *stats,
-	/*
-	double *const voltage_now,
-	double *const current_now,
-	*/
 	bool *const discharging,
 	bool *const inaccurate)
 {
