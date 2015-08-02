@@ -326,9 +326,9 @@ static double gettime_to_double(void)
  *      fast pseudo random number generator, see
  *      http://www.cse.yorku.ca/~oz/marsaglia-rng.html
  */
-static inline uint64_t mwc(void)
+static inline uint32_t mwc(void)
 {
-	static uint64_t w = MWC_SEED_W, z = MWC_SEED_Z;
+	static uint32_t w = MWC_SEED_W, z = MWC_SEED_Z;
 
 	z = 36969 * (z & 65535) + (z >> 16);
 	w = 18000 * (w & 65535) + (w >> 16);
