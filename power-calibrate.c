@@ -1802,7 +1802,7 @@ static int parse_cpu_info(char *arg)
 	int n = 0;
 
 	for (str = arg; (token = strtok_r(str, ",", &saveptr)) != NULL; str = NULL) {
-		int cpu = -1;
+		int cpu;
 		char *endptr;
 
 		errno = 0;
