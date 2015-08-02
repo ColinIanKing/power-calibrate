@@ -132,7 +132,7 @@ typedef struct {
 	int	cpus_used;
 } value_t;
 
-/* Bogot operation stats */
+/* Bogo operation stats */
 typedef struct {
 	double	ops;
 	uint8_t	padding[64];	/* Make ops not align on cache boundary */
