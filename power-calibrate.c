@@ -52,15 +52,13 @@
 #include <sys/wait.h>
 #include <sys/utsname.h>
 
-#define MIN_RUN_DURATION	(10)		/* We recommend a run of 2 minute pers sample */
+#define MIN_RUN_DURATION	(10)
 #define DEFAULT_RUN_DURATION	(120)
-#define SAMPLE_DELAY		(1)		/* Delay between samples in seconds */
-#define START_DELAY		(20)		/* Delay to wait before sampling */
-#define	RATE_ZERO_LIMIT		(0.001)		/* Less than this we call the power rate zero */
-#define	CTXT_SAMPLES		(21)
+#define SAMPLE_DELAY		(1)	/* Delay between samples in seconds */
+#define START_DELAY		(20)	/* Delay to wait before sampling */
+#define	RATE_ZERO_LIMIT		(0.001)	/* Less than this is a 0 power rate */
 #define MAX_CPU_LOAD		(100)
 #define DEFAULT_TIMEOUT		(10)
-#define CTXT_STOP		'X'
 #define CPU_ANY			(-1)
 
 #define DETECT_DISCHARGING	(1)
@@ -106,7 +104,8 @@
 #define SYS_FIELD_CHARGE_NOW		"POWER_SUPPLY_CHARGE_NOW="
 #define SYS_FIELD_STATUS_DISCHARGING  	"POWER_SUPPLY_STATUS=Discharging"
 
-#if defined(__x86_64__) || defined(__x86_64) || defined(__i386__) || defined(__i386)
+#if defined(__x86_64__) || defined(__x86_64) || \
+    defined(__i386__) || defined(__i386)
 #define RAPL_X86
 #endif
 
@@ -156,9 +155,10 @@ typedef struct rapl_info {
 	struct rapl_info *next;
 } rapl_info_t;
 
-typedef void (*func)(uint64_t param, const uint32_t instance, bogo_ops_t *bogo_ops);
+typedef void (*func)(
+	uint64_t param, const uint32_t instance, bogo_ops_t *bogo_ops);
 
-static int32_t sample_delay   = SAMPLE_DELAY;	/* time between each sample in secs */
+static int32_t sample_delay   = SAMPLE_DELAY;	/* time between each sampl */
 static volatile bool stop_flag;			/* sighandler stop flag */
 static int32_t num_cpus;			/* number of CPUs */
 static int32_t max_cpus;			/* number of CPUs in system */
@@ -169,7 +169,7 @@ static bogo_ops_t *bogo_ops;
 static cpu_list_t cpu_list;
 #if defined(RAPL_X86)
 static rapl_info_t *rapl_list = NULL;		/* RAPL domain info list */
-static uint8_t power_domains = 0;		/* Number of power domains (RAPL) */
+static uint8_t power_domains = 0;		/* Number of power domains */
 #endif
 
 /*
@@ -224,7 +224,6 @@ static const int signals[] = {
 #endif
 	-1,
 };
-
 
 /*
  *  units_to_str()
@@ -628,10 +627,12 @@ static int stats_read(stats_t *const stats, bogo_ops_t *bogo_ops)
 			if (sscanf(buf, "%*s %15lf", &(stats->value[CPU_INTR])) == 1)
 				stats->inaccurate[CPU_INTR] = false;
 		if (strncmp(buf, "procs_running ", 14) == 0)
-			if (sscanf(buf, "%*s %15lf", &(stats->value[CPU_PROCS_RUN])) == 1)
+			if (sscanf(buf, "%*s %15lf",
+				   &(stats->value[CPU_PROCS_RUN])) == 1)
 				stats->inaccurate[CPU_PROCS_RUN] = false;
 		if (strncmp(buf, "procs_blocked ", 14) == 0)
-			if (sscanf(buf, "%*s %15lf", &(stats->value[CPU_PROCS_BLK])) == 1)
+			if (sscanf(buf, "%*s %15lf",
+				   &(stats->value[CPU_PROCS_BLK])) == 1)
 				stats->inaccurate[CPU_PROCS_BLK] = false;
 	}
 	(void)fclose(fp);
@@ -718,16 +719,21 @@ static bool stats_gather(
 
 	for (i = 0; (j = indices[i]) != -1; i++) {
 		res->value[j] = (INACCURATE(s1, s2, j) || (total <= 0.0)) ?
-			NAN : (100.0 * res->value[j]) / total;
+		NAN : (100.0 * res->value[j]) / total;
 	}
-	res->value[CPU_CTXT] = (INACCURATE(s1, s2, CPU_CTXT) || (sample_delay <= 0.0)) ?
-			NAN : res->value[CPU_CTXT] / sample_delay;
-	res->value[CPU_INTR] = (INACCURATE(s1, s2, CPU_INTR) || (sample_delay <= 0.0)) ?
-			NAN : res->value[CPU_INTR] / sample_delay;
-	res->value[BOGO_OPS] = (INACCURATE(s1, s2, BOGO_OPS) || (sample_delay <= 0.0)) ?
-			NAN : res->value[BOGO_OPS] / sample_delay;
-	res->value[CPU_PROCS_RUN] = s2->inaccurate[CPU_PROCS_RUN] ? NAN : s2->value[CPU_PROCS_RUN];
-	res->value[CPU_PROCS_BLK] = s2->inaccurate[CPU_PROCS_BLK] ? NAN : s2->value[CPU_PROCS_BLK];
+	res->value[CPU_CTXT] = (INACCURATE(s1, s2, CPU_CTXT) ||
+				(sample_delay <= 0.0)) ?
+		NAN : res->value[CPU_CTXT] / sample_delay;
+	res->value[CPU_INTR] = (INACCURATE(s1, s2, CPU_INTR) ||
+				(sample_delay <= 0.0)) ?
+		NAN : res->value[CPU_INTR] / sample_delay;
+	res->value[BOGO_OPS] = (INACCURATE(s1, s2, BOGO_OPS) ||
+				(sample_delay <= 0.0)) ?
+		NAN : res->value[BOGO_OPS] / sample_delay;
+	res->value[CPU_PROCS_RUN] = s2->inaccurate[CPU_PROCS_RUN] ?
+		NAN : s2->value[CPU_PROCS_RUN];
+	res->value[CPU_PROCS_BLK] = s2->inaccurate[CPU_PROCS_BLK] ?
+		NAN : s2->value[CPU_PROCS_BLK];
 
 	return true;
 }
@@ -771,8 +777,8 @@ static void stats_print(
 	printf(fmt,
 		prefix,
 		s->value[CPU_USER], s->value[CPU_SYS], s->value[CPU_IDLE],
-		s->value[CPU_PROCS_RUN], s->value[CPU_CTXT], s->value[CPU_INTR],
-		str, buf);
+		s->value[CPU_PROCS_RUN], s->value[CPU_CTXT],
+		s->value[CPU_INTR], str, buf);
 }
 
 /*
@@ -802,7 +808,8 @@ static void stats_average_stddev_min_max(
 			total = 0.0;
 			for (i = 0; i < num; i++) {
 				if (!stats[i].inaccurate[j]) {
-					double diff = (double)stats[i].value[j] - average->value[j];
+					double diff = (double)stats[i].value[j]
+						- average->value[j];
 					diff = diff * diff;
 					total += diff;
 				}
@@ -1016,7 +1023,8 @@ static int power_get_proc_acpi(
 		 * the design_voltage field, so work around this.
 		 */
 		if (voltage == 0.0) {
-			sprintf(filename, "/proc/acpi/battery/%s/info", dirent->d_name);
+			sprintf(filename, "/proc/acpi/battery/%s/info",
+				dirent->d_name);
 			if ((file = fopen(filename, "r")) != NULL) {
 				while (fgets(buffer, sizeof(buffer), file) != NULL) {
 					ptr = strchr(buffer, ':');
@@ -1182,7 +1190,8 @@ static int power_get_rapl(
 	rapl_info_t *rapl;
 	int n = 0;
 
-	stats->inaccurate[POWER_NOW] = false;	/* Assume OK until found otherwise */
+	/* Assume OK until found otherwise */
+	stats->inaccurate[POWER_NOW] = false;
 	stats->value[POWER_NOW] = 0.0;
 	*discharging = false;
 
@@ -1219,7 +1228,8 @@ static int power_get_rapl(
 				stats->inaccurate[POWER_NOW] = true;
 			} else {
 				stats->value[POWER_DOMAIN_0 + n] =
-					(ujoules - last_energy_uj) / (t_delta * 1000000.0);
+					(ujoules - last_energy_uj) /
+					(t_delta * 1000000.0);
 			}
 			if (rapl->is_package)
 				stats->value[POWER_NOW] += stats->value[POWER_DOMAIN_0 + n];
@@ -1361,7 +1371,8 @@ static int monitor(
 		if (opt_flags & OPT_PROGRESS) {
 			double progress = readings * 100.0 / max_readings;
 			fprintf(stdout, "%10.10s: test progress %5.1f%% (total progress %6.2f%%)\r",
-				test, progress, (progress * percent_each / 100.0) + percent);
+				test, progress,
+				(progress * percent_each / 100.0) + percent);
 			fflush(stdout);
 		}
 
@@ -1394,7 +1405,8 @@ sample_now:
 			}
 
 			/*
-			 *  Total ticks was zero, something is broken, so re-sample
+			 *  Total ticks was zero, something is broken,
+			 *  so re-sample
 			 */
 			if (!stats_gather(&s1, &s2, &stats[readings])) {
 				stats_clear(&stats[readings]);
@@ -1422,7 +1434,10 @@ sample_now:
 		}
 	}
 
-	/* Stats now gathered, calculate averages, stddev, min and max and display */
+	/*
+	 * Stats now gathered, calculate averages, stddev, min
+	 * and max and display
+	 */
 	stats_average_stddev_min_max(stats, readings, &average, &stddev);
 	if (readings > 0) {
 		stats_print(test, true, &average);
@@ -1638,16 +1653,19 @@ static void show_trend_by_load(
 
 	units_to_str(gradient, "W", watts, sizeof(watts));
 
-	printf("  Power (Watts) = (%% CPU load * %f) + %f\n", gradient, intercept);
+	printf("  Power (Watts) = (%% CPU load * %f) + %f\n",
+		gradient, intercept);
 	if (average_voltage > 0) {
 		char amps[16], volts[16];
 		units_to_str(average_voltage, "V", volts, sizeof(volts));
 		units_to_str(gradient / average_voltage, "A", amps, sizeof(amps));
-		printf("  Each 1%% CPU load is about %s (about %s @ %s)\n", watts, amps, volts);
+		printf("  Each 1%% CPU load is about %s (about %s @ %s)\n",
+			watts, amps, volts);
 	} else {
 		printf("  Each 1%% CPU load is about %s\n", watts);
 	}
-	printf("  Coefficient of determination R^2 = %f (%s)\n", r2, coefficient_r2(r2));
+	printf("  Coefficient of determination R^2 = %f (%s)\n",
+		r2, coefficient_r2(r2));
 
 	dump_json_values(fp, "cpu-load", "one-percent-cpu-load", gradient, r2);
 }
@@ -1682,7 +1700,8 @@ static void show_trend_by_ops(
 	} else {
 		printf("  1 bogo op is about %s\n", watts);
 	}
-	printf("  Coefficient of determination R^2 = %f (%s)\n", r2, coefficient_r2(r2));
+	printf("  Coefficient of determination R^2 = %f (%s)\n",
+		r2, coefficient_r2(r2));
 }
 
 /*
@@ -1714,13 +1733,16 @@ static int monitor_cpu_load(
 			double percent_each = 100.0 / (samples_cpu * num_cpus);
 			double percent = n * percent_each;
 
-			snprintf(buffer, sizeof(buffer), "%d%% x %d", cpu_load, n_cpus);
-			start_load(pids, n_cpus, stress_cpu, (uint64_t)cpu_load, bogo_ops);
+			snprintf(buffer, sizeof(buffer), "%d%% x %d",
+				cpu_load, n_cpus);
+			start_load(pids, n_cpus, stress_cpu,
+				(uint64_t)cpu_load, bogo_ops);
 
 			ret = monitor(start_delay, max_readings, buffer,
 				percent_each, percent, bogo_ops,
 				&value_load->x, &dummy,
-				&value_load->y, &value_load->voltage, &value_ops->x);
+				&value_load->y, &value_load->voltage,
+				&value_ops->x);
 			value_ops->y = value_load->y;
 			value_ops->voltage = value_load->voltage;
 			value_ops->cpu_id = value_load->cpu_id = c->cpu_id;
@@ -1921,7 +1943,8 @@ int main(int argc, char * const argv[])
 #endif
 		case 's':
 			samples_cpu = atoi(optarg);
-			if ((samples_cpu < 3.0) || (samples_cpu > MAX_CPU_LOAD)) {
+			if ((samples_cpu < 3.0) ||
+			    (samples_cpu > MAX_CPU_LOAD)) {
 				fprintf(stderr, "Samples for CPU measurements out of range.\n");
 				goto out;
 			}
@@ -1949,7 +1972,8 @@ int main(int argc, char * const argv[])
 
 	if (filename) {
 		if ((fp = fopen(filename, "w")) == NULL) {
-			fprintf(stderr, "Cannot open json output file '%s', errno=%d (%s).\n",
+			fprintf(stderr, "Cannot open json output file '%s', "
+				"errno=%d (%s).\n",
 				filename, errno, strerror(errno));
 			goto out;
 		}
