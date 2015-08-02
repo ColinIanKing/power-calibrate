@@ -1526,7 +1526,7 @@ static void show_help(char *const argv[])
 	printf(" -d secs  specify delay before starting, default is %d seconds\n", START_DELAY);
 	printf(" -h show  help\n");
 	printf(" -n cpus  specify number of CPUs\n");
-	printf(" -o file  output results into json formatted file\n");
+	printf(" -o file  output results into YAML formatted file\n");
 	printf(" -p       show progress\n");
 	printf(" -r secs  specify run duration in seconds of each test cycle\n");
 #if defined(RAPL_X86)
@@ -1557,30 +1557,29 @@ static const char *coefficient_r2(const double r2)
 }
 
 /*
- *  dump_json_values()
- *	output json formatted data
+ *  dump_yaml_values()
+ *	output yaml formatted data
  */
-static void dump_json_values(
-	FILE *fp,
+static void dump_yaml_values(
+	FILE *yaml,
 	const char *heading,
 	const char *field,
 	const double value,
 	const double r2)
 {
-	if (!fp)
+	if (!yaml)
 		return;
 
-	fprintf(fp, "    \"%s\":{\n", heading);
-	fprintf(fp, "      \"%s\":%f,\n", field, value);
-	fprintf(fp, "      \"r-squared\":%f\n", r2);
-	fprintf(fp, "    },\n");
+	fprintf(yaml, "  %s:\n", heading);
+	fprintf(yaml, "    %s: %f\n", field, value);
+	fprintf(yaml, "    r-squared: %f\n", r2);
 }
 
 /*
- *  dump_json_misc()
+ *  dump_yaml_misc()
  *	output json misc test data
  */
-static void dump_json_misc(FILE *fp)
+static void dump_yaml_misc(FILE *yaml)
 {
 	time_t now;
 	struct tm tm;
@@ -1596,16 +1595,15 @@ static void dump_json_misc(FILE *fp)
 	memset(&buf, 0, sizeof(struct utsname));
 	uname(&buf);
 
-	fprintf(fp, "    \"test-run\":{\n");
-	fprintf(fp, "      \"date\":\"%2.2d/%2.2d/%-2.2d\",\n",
+	fprintf(yaml, "  test-run:\n");
+	fprintf(yaml, "    date: %2.2d/%2.2d/%-2.2d\n",
 		tm.tm_mday, tm.tm_mon + 1, (tm.tm_year+1900) % 100);
-	fprintf(fp, "      \"time\":\"%2.2d:%2.2d:%-2.2d\",\n",
+	fprintf(yaml, "    time: %-2.2d:%-2.2d:%-2.2d\n",
 		tm.tm_hour, tm.tm_min, tm.tm_sec);
-	fprintf(fp, "      \"sysname\":\"%s\",\n", buf.sysname);
-	fprintf(fp, "      \"nodename\":\"%s\",\n", buf.nodename);
-	fprintf(fp, "      \"release\":\"%s\",\n", buf.release);
-	fprintf(fp, "      \"machine\":\"%s\"\n", buf.machine);
-	fprintf(fp, "    }\n");
+	fprintf(yaml, "    sysname: %s\n", buf.sysname);
+	fprintf(yaml, "    nodename: %s\n", buf.nodename);
+	fprintf(yaml, "    release: %s\n", buf.release);
+	fprintf(yaml, "    machine: %s\n", buf.machine);
 }
 
 /*
@@ -1639,7 +1637,7 @@ static double calc_average_voltage(
  *	Show power trends by % CPU load
  */
 static void show_trend_by_load(
-	FILE *fp,
+	FILE *yaml,
 	const int cpus_used,
 	value_t *values,
 	const int num_values)
@@ -1667,7 +1665,7 @@ static void show_trend_by_load(
 	printf("  Coefficient of determination R^2 = %f (%s)\n",
 		r2, coefficient_r2(r2));
 
-	dump_json_values(fp, "cpu-load", "one-percent-cpu-load", gradient, r2);
+	dump_yaml_values(yaml, "cpu-load", "one-percent-cpu-load", gradient, r2);
 }
 
 /*
@@ -1675,7 +1673,6 @@ static void show_trend_by_load(
  *	Show power trends by bogos CPU operations
  */
 static void show_trend_by_ops(
-	FILE *fp,
 	const int cpus_used,
 	value_t *values,
 	const int num_values)
@@ -1683,8 +1680,6 @@ static void show_trend_by_ops(
 	char watts[16];
 	double gradient, intercept, r2;
 	double average_voltage = calc_average_voltage(cpus_used, values, num_values);
-
-	(void)fp;
 
 	if (calc_trend(cpus_used, values, num_values, &gradient, &intercept, &r2) < 0)
 		return;
@@ -1772,14 +1767,14 @@ static int monitor_cpu_load(
 				cpus_used, cpus_used > 1 ? "s" : "", max_cpus);
 			show_trend_by_load(NULL, cpus_used, values_load, n);
 			printf("\n");
-			show_trend_by_ops(NULL, cpus_used, values_ops, n);
+			show_trend_by_ops(cpus_used, values_ops, n);
 		}
 	} else {
 		printf("\nFor %d CPU%s (of a %d CPU system):\n",
 			cpu_list.count, cpu_list.count > 1 ? "s" : "", max_cpus);
 		show_trend_by_load(fp, CPU_ANY, values_load, n);
 		printf("\n");
-		show_trend_by_ops(fp, CPU_ANY, values_ops, n);
+		show_trend_by_ops(CPU_ANY, values_ops, n);
 	}
 	return 0;
 }
@@ -1889,7 +1884,7 @@ int main(int argc, char * const argv[])
 	int max_readings, run_duration, start_delay = START_DELAY;
 	int opt_run_duration = DEFAULT_RUN_DURATION;
 	char *filename = NULL;
-	FILE *fp = NULL;
+	FILE *yaml = NULL;
 	int ret = EXIT_FAILURE, i;
 	struct sigaction new_action;
 
@@ -1971,13 +1966,13 @@ int main(int argc, char * const argv[])
 	}
 
 	if (filename) {
-		if ((fp = fopen(filename, "w")) == NULL) {
+		if ((yaml = fopen(filename, "w")) == NULL) {
 			fprintf(stderr, "Cannot open json output file '%s', "
 				"errno=%d (%s).\n",
 				filename, errno, strerror(errno));
 			goto out;
 		}
-		fprintf(fp, "{\n  \"%s\":{\n", app_name);
+		fprintf(yaml, "---\n%s:\n", app_name);
 	}
 
 	memset(&new_action, 0, sizeof(new_action));
@@ -2008,18 +2003,18 @@ int main(int argc, char * const argv[])
 	if (not_discharging())
 		goto out;
 
-	if (monitor_cpu_load(fp, start_delay, max_readings, bogo_ops) < 0)
+	if (monitor_cpu_load(yaml, start_delay, max_readings, bogo_ops) < 0)
 		goto out;
 
 	ret = EXIT_SUCCESS;
 out:
 	if (bogo_ops)
 		(void)munmap(bogo_ops, sizeof(bogo_ops_t) * num_cpus);
-	if (fp) {
-		dump_json_misc(fp);
+	if (yaml) {
+		dump_yaml_misc(yaml);
 
-		fprintf(fp, "  }\n}\n");
-		(void)fclose(fp);
+		fprintf(yaml, "...\n");
+		(void)fclose(yaml);
 		if (ret != EXIT_SUCCESS)
 			unlink(filename);
 	}
