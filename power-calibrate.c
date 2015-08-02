@@ -1635,7 +1635,7 @@ static void show_trend_by_load(
 	value_t *values,
 	const int num_values)
 {
-	char watts[16], amps[16], volts[16];
+	char watts[16];
 	double gradient, intercept, r2;
 	double average_voltage = calc_average_voltage(cpus_used, values, num_values);
 
@@ -1646,6 +1646,7 @@ static void show_trend_by_load(
 
 	printf("  Power (Watts) = (%% CPU load * %f) + %f\n", gradient, intercept);
 	if (average_voltage > 0) {
+		char amps[16], volts[16];
 		units_to_str(average_voltage, "V", volts, sizeof(volts));
 		units_to_str(gradient / average_voltage, "A", amps, sizeof(amps));
 		printf("  Each 1%% CPU load is about %s (about %s @ %s)\n", watts, amps, volts);
@@ -1667,7 +1668,7 @@ static void show_trend_by_ops(
 	value_t *values,
 	const int num_values)
 {
-	char watts[16], amps[16], volts[16];
+	char watts[16];
 	double gradient, intercept, r2;
 	double average_voltage = calc_average_voltage(cpus_used, values, num_values);
 
@@ -1680,6 +1681,7 @@ static void show_trend_by_ops(
 
 	printf("  Power (Watts) = (bogo op * %e) + %f\n", gradient, intercept);
 	if (average_voltage > 0) {
+		char amps[16], volts[16];
 		units_to_str(average_voltage, "V", volts, sizeof(volts));
 		units_to_str(gradient / average_voltage, "A", amps, sizeof(amps));
 		printf("  1 bogo op is about %s (about %s @ %s)\n", watts, amps, volts);
