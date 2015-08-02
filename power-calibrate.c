@@ -110,12 +110,6 @@
 #define RAPL_X86
 #endif
 
-/* Measurement entry */
-typedef struct {
-	double	value;	/* Measurment value */
-	time_t	when;	/* When it was measured */
-} measurement_t;
-
 /* Statistics entry */
 typedef struct {
 	double	value[MAX_VALUES];
