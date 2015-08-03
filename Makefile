@@ -18,13 +18,16 @@
 
 VERSION=0.01.15
 
-CFLAGS += -Wall -Wextra -DVERSION='"$(VERSION)"'
+CFLAGS += -Wall -Wextra -DVERSION='"$(VERSION)"' -O2
 
 BINDIR=/usr/sbin
 MANDIR=/usr/share/man/man8
 
-power-calibrate: power-calibrate.o
-	$(CC) $(CFLAGS) $< -lm -o $@ $(LDFLAGS)
+SRC = power-calibrate.c perf.c
+OBJS = $(SRC:.c=.o)
+
+power-calibrate: $(OBJS)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(OBJS) -lm -o $@ $(LDFLAGS)
 
 power-calibrate.8.gz: power-calibrate.8
 	gzip -c $< > $@
@@ -37,7 +40,7 @@ dist:
 	rm -rf power-calibrate-$(VERSION)
 
 clean:
-	rm -f power-calibrate power-calibrate.o power-calibrate.8.gz
+	rm -f power-calibrate $(OBJS) power-calibrate.8.gz
 	rm -f power-calibrate-$(VERSION).tar.gz
 
 install: power-calibrate power-calibrate.8.gz

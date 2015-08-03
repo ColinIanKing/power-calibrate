@@ -52,7 +52,9 @@
 #include <sys/wait.h>
 #include <sys/utsname.h>
 
-#define MIN_RUN_DURATION	(10)
+#include "perf.h"
+
+#define MIN_RUN_DURATION	(2)
 #define DEFAULT_RUN_DURATION	(120)
 #define SAMPLE_DELAY		(1)	/* Delay between samples in seconds */
 #define START_DELAY		(20)	/* Delay to wait before sampling */
@@ -87,8 +89,10 @@
 #define PROC_EXEC		(14)
 #define PROC_EXIT		(15)
 #define BOGO_OPS		(16)
-#define POWER_NOW		(17)
-#define POWER_DOMAIN_0          (18)
+#define CPU_CYCLES		(17)
+#define CPU_INSTRUCTIONS	(18)
+#define POWER_NOW		(19)
+#define POWER_DOMAIN_0          (20)
 #define MAX_VALUES		(POWER_DOMAIN_0 + MAX_POWER_VALUES)
 
 #define MWC_SEED_Z		(362436069ULL)
@@ -117,7 +121,7 @@ typedef struct {
 
 /* x,y data pair, for trend analysis */
 typedef struct {
-	double 	x;
+	double	x;
 	double	y;
 
 	double  voltage;
@@ -135,6 +139,8 @@ typedef struct {
 typedef struct cpu_info {
 	int		cpu_id;	/* CPU number, 0 = first CPU */
 	struct cpu_info *next;
+	pid_t		pid;
+	perf_t		perf;
 } cpu_info_t;
 
 /* CPU list */
@@ -156,7 +162,7 @@ typedef struct rapl_info {
 } rapl_info_t;
 
 typedef void (*func)(
-	uint64_t param, const uint32_t instance, bogo_ops_t *bogo_ops);
+	uint64_t param, const int instance, bogo_ops_t *bogo_ops);
 
 static int32_t sample_delay   = SAMPLE_DELAY;	/* time between each sampl */
 static volatile bool stop_flag;			/* sighandler stop flag */
@@ -255,16 +261,16 @@ static char *units_to_str(
 	return buf;
 }
 /*
- *  uint64_to_str()
- *	uint64_t values to strings
+ *  value_to_str()
+ *	values to strings
  */
-static char *uint64_to_str(
-	const uint64_t val,
+static char *value_to_str(
+	const double val,
 	char *const buf,
 	const size_t buflen)
 {
 	double v = (double)val;
-	static const char scales[] = " KMB";
+	static const char scales[] = " KMBTPE";
 	size_t i;
 
 	for (i = 0; i < sizeof(scales) - 1; i++, v /= 1000) {
@@ -364,7 +370,7 @@ static int set_affinity(const int cpu)
  */
 static void stress_cpu(
 	const uint64_t cpu_load,
-	const uint32_t instance,
+	const int instance,
 	bogo_ops_t *bogo_ops)
 {
 	/*
@@ -434,20 +440,22 @@ static void stress_cpu(
  *  stop_load()
  *	kill load child processes
  */
-static void stop_load(const pid_t *pids, const int32_t total_procs)
+static void stop_load(const int total_procs)
 {
-	int32_t i;
+	int i;
+	cpu_info_t *c;
 
 	/* Kill.. */
-	for (i = 0; i < total_procs; i++) {
-		if (pids[i])
-			kill(pids[i], SIGKILL);
+	for (c = cpu_list.head, i = 0; c && i < total_procs; c = c->next, i++) {
+		if (c->pid > -1)
+			kill(c->pid, SIGKILL);
 	}
 	/* And ensure we don't get zombies */
-	for (i = 0; i < total_procs; i++) {
-		if (pids[i]) {
+	for (c = cpu_list.head, i = 0; c && i < total_procs; c = c->next, i++) {
+		if (c->pid > -1) {
 			int status;
-			wait(&status);
+
+			waitpid(c->pid, &status, 0);
 		}
 	}
 }
@@ -457,13 +465,11 @@ static void stop_load(const pid_t *pids, const int32_t total_procs)
  *	load system with some stress processes
  */
 void start_load(
-	pid_t *pids,
-	const uint32_t total_procs,
+	const int total_procs,
 	const func load_func,
 	const uint64_t param,
 	bogo_ops_t *bogo_ops)
 {
-	uint32_t instance;
 	int i;
 	struct sigaction new_action;
 	cpu_info_t *c;
@@ -478,30 +484,23 @@ void start_load(
 		(void)siginterrupt(signals[i], 1);
 	}
 
-	memset(pids, 0, sizeof(pid_t) * total_procs);
+	for (c = cpu_list.head, i= 0;
+		c && i < total_procs; c = c->next, i++) {
+		c->pid = fork();
 
-	for (c = cpu_list.head, instance = 0;
-		c && instance < total_procs; c = c->next, instance++) {
-		int fd;
-		int pid = fork();
-
-		switch (pid) {
+		switch (c->pid) {
 		case -1:
 			fprintf(stderr, "Cannot fork, errno=%d (%s)\n",
 				errno, strerror(errno));
-			stop_load(pids, instance);
+			stop_load(i);
 			exit(EXIT_FAILURE);
 		case 0:
+			/* Child */
 			if (set_affinity(c->cpu_id) < 0)
 				exit(0);
-
-			for (fd = (getdtablesize() - 1); fd > 2; fd--)
-				(void)close(fd);
-			/* Child */
-			load_func(param, instance, bogo_ops);
+			load_func(param, i, bogo_ops);
 			exit(0);
 		default:
-			pids[instance] = pid;
 			break;
 		}
 	}
@@ -523,7 +522,6 @@ static char *file_get(const char *const file)
 		(void)fclose(fp);
 		return NULL;
 	}
-
 	(void)fclose(fp);
 
 	return strdup(buffer);
@@ -686,6 +684,7 @@ static bool stats_gather(
 	double total;
 	int i, j;
 	bool inaccurate = false;
+	cpu_info_t *c;
 
 	static int indices[] = {
 		CPU_USER, CPU_NICE, CPU_SYS, CPU_IDLE,
@@ -702,6 +701,18 @@ static bool stats_gather(
 	res->value[CPU_CTXT]	= stats_sane(s1, s2, CPU_CTXT);
 	res->value[CPU_INTR]	= stats_sane(s1, s2, CPU_INTR);
 	res->value[BOGO_OPS]	= stats_sane(s1, s2, BOGO_OPS);
+
+	res->value[CPU_CYCLES]  = 0.0;
+
+	for (c = cpu_list.head; c; c = c->next) {
+		double value;
+
+		perf_counter(&c->perf, PERF_HW_CPU_CYCLES, &value);
+		res->value[CPU_CYCLES] += value;
+
+		perf_counter(&c->perf, PERF_HW_INSTRUCTIONS, &value);
+		res->value[CPU_INSTRUCTIONS] += value;
+	}
 
 	for (i = 0; (j = indices[i]) != -1; i++)
 		inaccurate |= (s1->inaccurate[j] | s2->inaccurate[j]);
@@ -744,7 +755,7 @@ static bool stats_gather(
  */
 static void stats_headings(const char *test)
 {
-	printf("%10.10s  User   Sys  Idle  Run  Ctxt/s  IRQ/s  Ops/s  Watts\n", test);
+	printf("%10.10s  User   Sys  Idle  Run  Ctxt/s  IRQ/s  Ops/s Cycl/s Inst/s  Watts\n", test);
 }
 
 /*
@@ -756,7 +767,7 @@ static void stats_print(
 	const bool summary,
 	const stats_t *const s)
 {
-	char buf[10], str[16];
+	char buf[10], bogo_ops[10], cpu_cycles[10], cpu_instr[10];
 	char *fmt;
 
 	if (summary) {
@@ -769,16 +780,19 @@ static void stats_print(
 			s->inaccurate[POWER_NOW] ? "E" : "");
 	}
 
-	uint64_to_str(s->value[BOGO_OPS], str, sizeof(str));
+	value_to_str(s->value[BOGO_OPS], bogo_ops, sizeof(bogo_ops));
+	value_to_str(s->value[CPU_CYCLES], cpu_cycles, sizeof(cpu_cycles));
+	value_to_str(s->value[CPU_INSTRUCTIONS], cpu_instr, sizeof(cpu_instr));
 
 	fmt = summary ?
-		"%10.10s %5.1f %5.1f %5.1f %4.1f %7.1f %6.1f %6s %s\n" :
-		"%10.10s %5.1f %5.1f %5.1f %4.0f %7.0f %6.0f %6s %s\n";
+		"%10.10s %5.1f %5.1f %5.1f %4.1f %7.1f %6.1f %6s %6s %6s %s\n" :
+		"%10.10s %5.1f %5.1f %5.1f %4.0f %7.0f %6.0f %6s %6s %6s %s\n";
 	printf(fmt,
 		prefix,
 		s->value[CPU_USER], s->value[CPU_SYS], s->value[CPU_IDLE],
 		s->value[CPU_PROCS_RUN], s->value[CPU_CTXT],
-		s->value[CPU_INTR], str, buf);
+		s->value[CPU_INTR],
+		bogo_ops, cpu_cycles, cpu_instr, buf);
 }
 
 /*
@@ -1304,20 +1318,22 @@ static int monitor(
 	const int start_delay,
 	const int max_readings,
 	const char *test,
-	double percent_each,
-	double percent,
+	const double percent_each,
+	const double percent,
 	bogo_ops_t *bogo_ops,
 	double *busy,
-	double *ctxt,
 	double *power,
 	double *voltage,
-	double *ops)
+	double *ops,
+	double *cpu_cycles,
+	double *cpu_instr)
 {
 	int readings = 0, i;
 	int64_t t = 1;
 	stats_t *stats, s1, s2, average, stddev;
 	bool discharging, dummy_inaccurate;
 	double time_start;
+	cpu_info_t *c;
 
 	if (start_delay > 0) {
 		stats_t dummy;
@@ -1353,6 +1369,7 @@ static int monitor(
 		free(stats);
 		return -1;
 	}
+
 	if (stats_read(&s1, bogo_ops) < 0) {
 		free(stats);
 		return -1;
@@ -1367,6 +1384,8 @@ static int monitor(
 			free(stats);
 			return -1;
 		}
+		for (c = cpu_list.head; c; c = c->next)
+			perf_start(&c->perf, c->pid);
 
 		if (opt_flags & OPT_PROGRESS) {
 			double progress = readings * 100.0 / max_readings;
@@ -1380,9 +1399,10 @@ static int monitor(
 		if (secs < 0.0)
 			goto sample_now;
 		tv = double_to_timeval(secs);
-
 		ret = select(0, NULL, NULL, NULL, &tv);
 		if (ret < 0) {
+			for (c = cpu_list.head; c; c = c->next)
+				perf_stop(&c->perf);
 			if (errno == EINTR)
 				break;
 			fprintf(stderr,"select failed: errno=%d (%s).\n",
@@ -1398,11 +1418,12 @@ sample_now:
 			char tmbuffer[10];
 			bool discharging;
 
+			for (c = cpu_list.head; c; c = c->next)
+				perf_stop(&c->perf);
+
 			get_time(tmbuffer, sizeof(tmbuffer));
-			if (stats_read(&s2, bogo_ops) < 0) {
-				free(stats);
-				return -1;
-			}
+			if (stats_read(&s2, bogo_ops) < 0)
+				goto tidy_exit;
 
 			/*
 			 *  Total ticks was zero, something is broken,
@@ -1410,23 +1431,17 @@ sample_now:
 			 */
 			if (!stats_gather(&s1, &s2, &stats[readings])) {
 				stats_clear(&stats[readings]);
-				if (stats_read(&s1, bogo_ops) < 0) {
-					free(stats);
-					return -1;
-				}
+				if (stats_read(&s1, bogo_ops) < 0)
+					goto tidy_exit;
 				continue;
 			}
 
 			if (power_get(&stats[readings], &discharging,
-				      &stats[readings].inaccurate[POWER_NOW]) < 0) {
-				free(stats);
-				return -1; 	/* Failure to read */
-			}
+				      &stats[readings].inaccurate[POWER_NOW]) < 0)
+				goto tidy_exit;
 
-			if (!discharging) {
-				free(stats);
-				return -1;	/* No longer discharging! */
-			}
+			if (!discharging)
+				goto tidy_exit; /* No longer discharging! */
 
 			readings++;
 			s1 = s2;
@@ -1443,13 +1458,19 @@ sample_now:
 		stats_print(test, true, &average);
 	}
 	*busy = 100.0 - average.value[CPU_IDLE];
-	*ctxt = average.value[CPU_CTXT];
 	*power = average.value[POWER_NOW];
 	*voltage = average.value[VOLTAGE_NOW];
 	*ops = average.value[BOGO_OPS];
+	*cpu_cycles = average.value[CPU_CYCLES];
+	*cpu_instr = average.value[CPU_INSTRUCTIONS];
 
 	free(stats);
 	return 0;
+
+tidy_exit:
+	free(stats);
+	return -1;
+
 }
 
 /*
@@ -1633,14 +1654,16 @@ static double calc_average_voltage(
 }
 
 /*
- *  show_trend_by_load()
- *	Show power trends by % CPU load
+ *  show_trend()
+ *	Show power trend
  */
-static void show_trend_by_load(
+static void show_trend(
 	FILE *yaml,
 	const int cpus_used,
 	value_t *values,
-	const int num_values)
+	const int num_values,
+	const char *unit,
+	const char *each)
 {
 	char watts[16];
 	double gradient, intercept, r2;
@@ -1651,52 +1674,21 @@ static void show_trend_by_load(
 
 	units_to_str(gradient, "W", watts, sizeof(watts));
 
-	printf("  Power (Watts) = (%% CPU load * %f) + %f\n",
-		gradient, intercept);
+	printf("  Power (Watts) = (%s * %e) + %f\n",
+		unit, gradient, intercept);
 	if (average_voltage > 0) {
 		char amps[16], volts[16];
 		units_to_str(average_voltage, "V", volts, sizeof(volts));
 		units_to_str(gradient / average_voltage, "A", amps, sizeof(amps));
-		printf("  Each 1%% CPU load is about %s (about %s @ %s)\n",
-			watts, amps, volts);
+		printf("  Each %s is about %s (about %s @ %s)\n",
+			each, watts, amps, volts);
 	} else {
-		printf("  Each 1%% CPU load is about %s\n", watts);
+		printf("  Each %s is about %s\n", each, watts);
 	}
 	printf("  Coefficient of determination R^2 = %f (%s)\n",
 		r2, coefficient_r2(r2));
 
 	dump_yaml_values(yaml, "cpu-load", "one-percent-cpu-load", gradient, r2);
-}
-
-/*
- *  show_trend_by_load()
- *	Show power trends by bogos CPU operations
- */
-static void show_trend_by_ops(
-	const int cpus_used,
-	value_t *values,
-	const int num_values)
-{
-	char watts[16];
-	double gradient, intercept, r2;
-	double average_voltage = calc_average_voltage(cpus_used, values, num_values);
-
-	if (calc_trend(cpus_used, values, num_values, &gradient, &intercept, &r2) < 0)
-		return;
-
-	units_to_str(gradient, "W", watts, sizeof(watts));
-
-	printf("  Power (Watts) = (bogo op * %e) + %f\n", gradient, intercept);
-	if (average_voltage > 0) {
-		char amps[16], volts[16];
-		units_to_str(average_voltage, "V", volts, sizeof(volts));
-		units_to_str(gradient / average_voltage, "A", amps, sizeof(amps));
-		printf("  1 bogo op is about %s (about %s @ %s)\n", watts, amps, volts);
-	} else {
-		printf("  1 bogo op is about %s\n", watts);
-	}
-	printf("  Coefficient of determination R^2 = %f (%s)\n",
-		r2, coefficient_r2(r2));
 }
 
 /*
@@ -1710,19 +1702,19 @@ static int monitor_cpu_load(
 	bogo_ops_t *bogo_ops)
 {
 	uint32_t i, n = 0;
-	value_t	 values_load[num_cpus * samples_cpu], *value_load = values_load;
-	value_t	 values_ops[num_cpus * samples_cpu], *value_ops = values_ops;
+	value_t values_load[num_cpus * samples_cpu], *value_load = values_load;
+	value_t values_ops[num_cpus * samples_cpu], *value_ops = values_ops;
+	value_t values_cpu_cycles[num_cpus * samples_cpu], *value_cpu_cycles = values_cpu_cycles;
+	value_t values_cpu_instr[num_cpus * samples_cpu], *value_cpu_instr = values_cpu_instr;
 	double scale = (double)MAX_CPU_LOAD / (samples_cpu - 1);
 
 	stats_headings("CPU load");
 	for (i = 0; i < (uint32_t)samples_cpu; i++) {
-		pid_t pids[num_cpus];
 		cpu_info_t *c;
 		uint32_t n_cpus;
 
 		for (n_cpus = 1, c = cpu_list.head; c; n_cpus++, c = c->next) {
 			char buffer[1024];
-			double dummy;
 			int cpu_load = scale * i;
 			int ret;
 			double percent_each = 100.0 / (samples_cpu * num_cpus);
@@ -1730,24 +1722,38 @@ static int monitor_cpu_load(
 
 			snprintf(buffer, sizeof(buffer), "%d%% x %d",
 				cpu_load, n_cpus);
-			start_load(pids, n_cpus, stress_cpu,
+			start_load(n_cpus, stress_cpu,
 				(uint64_t)cpu_load, bogo_ops);
 
 			ret = monitor(start_delay, max_readings, buffer,
 				percent_each, percent, bogo_ops,
-				&value_load->x, &dummy,
-				&value_load->y, &value_load->voltage,
-				&value_ops->x);
+				&value_load->x, &value_load->y,
+				&value_load->voltage,
+				&value_ops->x,
+				&value_cpu_cycles->x,
+				&value_cpu_instr->x);
 			value_ops->y = value_load->y;
 			value_ops->voltage = value_load->voltage;
 			value_ops->cpu_id = value_load->cpu_id = c->cpu_id;
 			value_ops->cpus_used = value_load->cpus_used = n_cpus;
 
-			stop_load(pids, n_cpus);
+			value_cpu_cycles->y = value_load->y;
+			value_cpu_cycles->voltage = value_load->voltage;
+			value_cpu_cycles->cpu_id = value_load->cpu_id;
+			value_cpu_cycles->cpus_used = value_load->cpus_used;
+
+			value_cpu_instr->y = value_load->y;
+			value_cpu_instr->voltage = value_load->voltage;
+			value_cpu_instr->cpu_id = value_load->cpu_id;
+			value_cpu_instr->cpus_used = value_load->cpus_used;
+
+			stop_load(n_cpus);
 			if (stop_flag || (ret < 0))
 				return -1;
 			value_load++;
 			value_ops++;
+			value_cpu_cycles++;
+			value_cpu_instr++;
 			n++;
 		}
 	}
@@ -1757,7 +1763,6 @@ static int monitor_cpu_load(
 		return -1;
 	}
 
-
 	if (opt_flags & OPT_CALIBRATE_EACH_CPU) {
 		cpu_info_t *c;
 		int cpus_used = 0;
@@ -1765,16 +1770,24 @@ static int monitor_cpu_load(
 		for (c = cpu_list.head, cpus_used = 1; c; c = c->next, cpus_used++) {
 			printf("\nFor %d CPU%s (of a %d CPU system):\n",
 				cpus_used, cpus_used > 1 ? "s" : "", max_cpus);
-			show_trend_by_load(NULL, cpus_used, values_load, n);
+			show_trend(NULL, cpus_used, values_load, n, "% CPU load", "1% CPU load");
 			printf("\n");
-			show_trend_by_ops(cpus_used, values_ops, n);
+			show_trend(NULL, cpus_used, values_ops, n, "bogo op", "1 bogo op");
+			printf("\n");
+			show_trend(NULL, cpus_used, values_cpu_cycles, n, "CPU cycle", "1 CPU cycle");
+			printf("\n");
+			show_trend(NULL, cpus_used, values_cpu_cycles, n, "CPU cycle", "1 CPU cycle");
 		}
 	} else {
 		printf("\nFor %d CPU%s (of a %d CPU system):\n",
 			cpu_list.count, cpu_list.count > 1 ? "s" : "", max_cpus);
-		show_trend_by_load(fp, CPU_ANY, values_load, n);
+		show_trend(fp, CPU_ANY, values_load, n, "% CPU load", "1% CPU load");
 		printf("\n");
-		show_trend_by_ops(CPU_ANY, values_ops, n);
+		show_trend(fp, CPU_ANY, values_ops, n, "bogo op", "1 bogo op");
+		printf("\n");
+		show_trend(fp, CPU_ANY, values_cpu_cycles, n, "CPU cycle", "1 CPU cycle");
+		printf("\n");
+		show_trend(fp, CPU_ANY, values_cpu_instr, n, "CPU instruction", "1 CPU instruction");
 	}
 	return 0;
 }
