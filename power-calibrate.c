@@ -167,9 +167,6 @@ typedef void (*func)(
 static volatile bool stop_flag;			/* sighandler stop flag */
 static int32_t opt_flags;			/* command options */
 static char *app_name = "power-calibrate";	/* application name */
-#if defined(RAPL_X86)
-static rapl_info_t *rapl_list = NULL;		/* RAPL domain info list */
-#endif
 
 /*
  *  Attempt to catch a range of signals so
@@ -457,7 +454,7 @@ static void stop_load(cpu_list_t *cpu_list, const int total_procs)
  *  start_load()
  *	load system with some stress processes
  */
-void start_load(
+static void start_load(
 	cpu_list_t *cpu_list,
 	const int total_procs,
 	const func load_func,
@@ -1097,7 +1094,7 @@ static int power_get_proc_acpi(
  *  rapl_free_list()
  *	free RAPL list
  */
-void rapl_free_list(void)
+static void rapl_free_list(rapl_info_t *rapl_list)
 {
 	rapl_info_t *rapl = rapl_list;
 
@@ -1114,7 +1111,7 @@ void rapl_free_list(void)
 /*
  *  rapl_get_domains()
  */
-static int rapl_get_domains(void)
+static int rapl_get_domains(rapl_info_t **rapl_list)
 {
 	DIR *dir;
         struct dirent *entry;
@@ -1177,8 +1174,8 @@ static int rapl_get_domains(void)
 		}
 
 		rapl->is_package = (strncmp(rapl->domain_name, "package-", 8) == 0);
-		rapl->next = rapl_list;
-		rapl_list = rapl;
+		rapl->next = *rapl_list;
+		*rapl_list = rapl;
 		n++;
 	}
 	(void)closedir(dir);
@@ -1193,6 +1190,7 @@ static int rapl_get_domains(void)
  *	get power discharge rate from battery via the RAPL interface
  */
 static int power_get_rapl(
+	rapl_info_t *rapl_list,
 	stats_t *stats,
 	bool *const discharging)
 {
@@ -1268,6 +1266,7 @@ static int power_get_rapl(
  *	get consumption rate
  */
 static int power_get(
+	rapl_info_t *rapl_list,
 	stats_t *stats,
 	bool *const discharging,
 	bool *const inaccurate)
@@ -1281,7 +1280,7 @@ static int power_get(
 	}
 #if defined(RAPL_X86)
 	if (opt_flags & OPT_RAPL)
-		return power_get_rapl(stats, discharging);
+		return power_get_rapl(rapl_list, stats, discharging);
 #endif
 
 	if ((stat(SYS_CLASS_POWER_SUPPLY, &buf) != -1) &&
@@ -1300,12 +1299,12 @@ static int power_get(
  *  not_discharging()
  *	returns true if battery is not discharging
  */
-static inline bool not_discharging(void)
+static inline bool not_discharging(rapl_info_t *rapl_list)
 {
 	stats_t dummy;
 	bool discharging, inaccurate;
 
-	return power_get(&dummy, &discharging, &inaccurate) < 0;
+	return power_get(rapl_list, &dummy, &discharging, &inaccurate) < 0;
 }
 
 /*
@@ -1315,6 +1314,7 @@ static inline bool not_discharging(void)
 static int monitor(
 	const int num_cpus,
 	cpu_list_t *cpu_list,
+	rapl_info_t *rapl_list,
 	const int start_delay,
 	const int sample_delay,
 	const int max_readings,
@@ -1345,7 +1345,7 @@ static int monitor(
 					test, 100.0 * i / start_delay);
 				fflush(stdout);
 			}
-			if (power_get(&dummy, &discharging, &dummy_inaccurate) < 0)
+			if (power_get(rapl_list, &dummy, &discharging, &dummy_inaccurate) < 0)
 				return -1;
 			if (sleep(1) || stop_flag)
 				return -1;
@@ -1354,7 +1354,7 @@ static int monitor(
 		}
 	}
 
-	if (not_discharging())
+	if (not_discharging(rapl_list))
 		return -1;
 
 	if ((stats = calloc(max_readings, sizeof(stats_t))) == NULL) {
@@ -1437,7 +1437,7 @@ sample_now:
 				continue;
 			}
 
-			if (power_get(&stats[readings], &discharging,
+			if (power_get(rapl_list, &stats[readings], &discharging,
 				      &stats[readings].inaccurate[POWER_NOW]) < 0)
 				goto tidy_exit;
 
@@ -1703,6 +1703,7 @@ static int monitor_cpu_load(
 	const int32_t samples_cpu,
 	const int32_t sample_delay,
 	cpu_list_t *cpu_list,
+	rapl_info_t *rapl_list,
 	const int start_delay,
 	const int max_readings,
 	bogo_ops_t *bogo_ops)
@@ -1731,7 +1732,8 @@ static int monitor_cpu_load(
 			start_load(cpu_list, n_cpus, stress_cpu,
 				(uint64_t)cpu_load, bogo_ops);
 
-			ret = monitor(num_cpus, cpu_list, start_delay, sample_delay,
+			ret = monitor(num_cpus, cpu_list, rapl_list,
+				start_delay, sample_delay,
 				max_readings, buffer,
 				percent_each, percent, bogo_ops,
 				&value_load->x, &value_load->y,
@@ -1912,6 +1914,9 @@ int main(int argc, char * const argv[])
 	int ret = EXIT_FAILURE, i;
 	struct sigaction new_action;
 	bogo_ops_t *bogo_ops = NULL;
+#if defined(RAPL_X86)
+	rapl_info_t *rapl_list = NULL;		/* RAPL domain info list */
+#endif
 	cpu_list_t cpu_list;
 	int32_t samples_cpu = 11.0;		/* samples per run */
 	int32_t sample_delay = SAMPLE_DELAY;	/* time between each sampl */
@@ -1983,7 +1988,7 @@ int main(int argc, char * const argv[])
 	populate_cpu_info(num_cpus, &cpu_list);
 
 #if defined(RAPL_X86)
-	if ((opt_flags & OPT_RAPL) && (rapl_get_domains() < 1))
+	if ((opt_flags & OPT_RAPL) && (rapl_get_domains(&rapl_list) < 1))
 		exit(EXIT_FAILURE);
 #endif
 
@@ -2030,11 +2035,11 @@ int main(int argc, char * const argv[])
 		goto out;
 	}
 
-	if (not_discharging())
+	if (not_discharging(rapl_list))
 		goto out;
 
 	if (monitor_cpu_load(yaml, num_cpus, max_cpus, samples_cpu, sample_delay,
-		&cpu_list, start_delay, max_readings, bogo_ops) < 0)
+		&cpu_list, rapl_list, start_delay, max_readings, bogo_ops) < 0)
 		goto out;
 
 	ret = EXIT_SUCCESS;
@@ -2051,6 +2056,10 @@ out:
 	}
 	if (cpu_list.head)
 		free_cpu_info(&cpu_list);
+
+#if defined(RAPL_X86)
+		rapl_free_list(rapl_list);
+#endif
 
 	exit(ret);
 }
