@@ -1979,6 +1979,8 @@ int main(int argc, char * const argv[])
 	int32_t num_cpus;			/* number of CPUs */
 	int32_t max_cpus;			/* number of CPUs in system */
 
+	memset(&cpu_list, 0, sizeof(cpu_list));
+
 	max_cpus = num_cpus = sysconf(_SC_NPROCESSORS_CONF);
 	if (num_cpus < 0) {
 		fprintf(stderr, "Cannot determine number of CPUs, errno=%d (%s).\n",
