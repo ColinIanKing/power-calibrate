@@ -141,27 +141,25 @@ int perf_stop(perf_t *p)
 			continue;
 		}
 		if (ioctl(fd, PERF_EVENT_IOC_DISABLE, PERF_IOC_FLAG_GROUP) < 0) {
-			(void)close(fd);
-			p->perf_stat[i].fd = -1;
-		}
-
-		memset(&data, 0, sizeof(data));
-		ret = read(fd, &data, sizeof(data));
-		if (ret != sizeof(data))
-			p->perf_stat[i].counter = PERF_INVALID;
-		else {
-			/* Ensure we don't get division by zero */
-			if (data.time_running == 0) {
-				scale = (data.time_enabled == 0) ? 1.0 : 0.0;
-			} else {
-				scale = (double)data.time_enabled / data.time_running;
+			p->perf_stat[i].counter = 0;
+		} else {
+			memset(&data, 0, sizeof(data));
+			ret = read(fd, &data, sizeof(data));
+			if (ret != sizeof(data))
+				p->perf_stat[i].counter = PERF_INVALID;
+			else {
+				/* Ensure we don't get division by zero */
+				if (data.time_running == 0) {
+					scale = (data.time_enabled == 0) ? 1.0 : 0.0;
+				} else {
+					scale = (double)data.time_enabled / data.time_running;
+				}
+				p->perf_stat[i].counter = (uint64_t)((double)data.counter * scale);
 			}
-			p->perf_stat[i].counter = (uint64_t)((double)data.counter * scale);
 		}
 		(void)close(fd);
 		p->perf_stat[i].fd = -1;
 	}
-
 out_ok:
 	rc = 0;
 	for (; i < PERF_MAX; i++)
