@@ -164,7 +164,6 @@ typedef struct rapl_info {
 typedef void (*func)(
 	uint64_t param, const int instance, bogo_ops_t *bogo_ops);
 
-static int32_t sample_delay   = SAMPLE_DELAY;	/* time between each sampl */
 static volatile bool stop_flag;			/* sighandler stop flag */
 static int32_t num_cpus;			/* number of CPUs */
 static int32_t max_cpus;			/* number of CPUs in system */
@@ -675,6 +674,7 @@ static double stats_sane(
  */
 static bool stats_gather(
 	cpu_list_t *cpu_list,
+	uint32_t sample_delay,
 	const stats_t *const s1,
 	const stats_t *const s2,
 	stats_t *const res)
@@ -1314,6 +1314,7 @@ static inline bool not_discharging(void)
 static int monitor(
 	cpu_list_t *cpu_list,
 	const int start_delay,
+	const int sample_delay,
 	const int max_readings,
 	const char *test,
 	const double percent_each,
@@ -1427,7 +1428,7 @@ sample_now:
 			 *  Total ticks was zero, something is broken,
 			 *  so re-sample
 			 */
-			if (!stats_gather(cpu_list, &s1, &s2, &stats[readings])) {
+			if (!stats_gather(cpu_list, sample_delay, &s1, &s2, &stats[readings])) {
 				stats_clear(&stats[readings]);
 				if (stats_read(&s1, bogo_ops) < 0)
 					goto tidy_exit;
@@ -1696,6 +1697,7 @@ static void show_trend(
 static int monitor_cpu_load(
 	FILE *fp,
 	int32_t samples_cpu,
+	int32_t sample_delay,
 	cpu_list_t *cpu_list,
 	const int start_delay,
 	const int max_readings,
@@ -1725,7 +1727,7 @@ static int monitor_cpu_load(
 			start_load(cpu_list, n_cpus, stress_cpu,
 				(uint64_t)cpu_load, bogo_ops);
 
-			ret = monitor(cpu_list, start_delay,
+			ret = monitor(cpu_list, start_delay, sample_delay,
 				max_readings, buffer,
 				percent_each, percent, bogo_ops,
 				&value_load->x, &value_load->y,
@@ -1904,6 +1906,7 @@ int main(int argc, char * const argv[])
 	bogo_ops_t *bogo_ops = NULL;
 	cpu_list_t cpu_list;
 	int32_t samples_cpu = 11.0;		/* samples per run */
+	int32_t sample_delay = SAMPLE_DELAY;	/* time between each sampl */
 
 	max_cpus = num_cpus = sysconf(_SC_NPROCESSORS_CONF);
 	if (num_cpus < 0) {
@@ -2020,7 +2023,7 @@ int main(int argc, char * const argv[])
 	if (not_discharging())
 		goto out;
 
-	if (monitor_cpu_load(yaml, samples_cpu, &cpu_list, start_delay,
+	if (monitor_cpu_load(yaml, samples_cpu, sample_delay, &cpu_list, start_delay,
 		max_readings, bogo_ops) < 0)
 		goto out;
 
