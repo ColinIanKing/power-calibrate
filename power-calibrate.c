@@ -1643,7 +1643,7 @@ static void dump_yaml_values(
 		return;
 
 	fprintf(yaml, "  %s:\n", heading);
-	fprintf(yaml, "    %s: %f\n", field, value);
+	fprintf(yaml, "    %s: %e\n", field, value);
 	fprintf(yaml, "    r-squared: %f\n", r2);
 }
 
@@ -1714,7 +1714,9 @@ static void show_trend(
 	value_t *values,
 	const int num_values,
 	const char *unit,
-	const char *each)
+	const char *each,
+	const char *heading,
+	const char *field)
 {
 	char watts[16];
 	double gradient, intercept, r2;
@@ -1740,7 +1742,7 @@ static void show_trend(
 	printf("  Coefficient of determination R^2 = %f (%s)\n",
 		r2, coefficient_r2(r2));
 
-	dump_yaml_values(yaml, "cpu-load", "one-percent-cpu-load", gradient, r2);
+	dump_yaml_values(yaml, heading, field, gradient, r2);
 }
 
 /*
@@ -1830,28 +1832,44 @@ static int monitor_cpu_load(
 		for (c = cpu_list->head, cpus_used = 1; c; c = c->next, cpus_used++) {
 			printf("\nFor %d CPU%s (of a %d CPU system):\n",
 				cpus_used, cpus_used > 1 ? "s" : "", max_cpus);
-			show_trend(NULL, cpus_used, values_load, n, "% CPU load", "1% CPU load");
+			show_trend(NULL, cpus_used, values_load, n,
+				"% CPU load", "1% CPU load",
+				"cpu-load", "one-percent-cpu-load-power-watts");
 			printf("\n");
-			show_trend(NULL, cpus_used, values_ops, n, "bogo op", "1 bogo op");
+			show_trend(NULL, cpus_used, values_ops, n,
+				"bogo op", "1 bogo op",
+				"bogo-op", "one-bogo-op-power-watts");
 
 #if defined(PERF_ENABLED)
 			printf("\n");
-			show_trend(NULL, cpus_used, values_cpu_cycles, n, "CPU cycle", "1 CPU cycle");
+			show_trend(NULL, cpus_used, values_cpu_cycles, n,
+				"CPU cycle", "1 CPU cycle",
+				"cpu-cycle", "one-cpu-cycle-power-watts");
 			printf("\n");
-			show_trend(NULL, cpus_used, values_cpu_cycles, n, "CPU cycle", "1 CPU cycle");
+			show_trend(NULL, cpus_used, values_cpu_instr, n,
+				"CPU instruction", "1 CPU instruction",
+				"cpu-instruction", "on-cpu-instruction-power-watts");
 #endif
 		}
 	} else {
 		printf("\nFor %d CPU%s (of a %d CPU system):\n",
 			cpu_list->count, cpu_list->count > 1 ? "s" : "", max_cpus);
-		show_trend(fp, CPU_ANY, values_load, n, "% CPU load", "1% CPU load");
+		show_trend(fp, CPU_ANY, values_load, n,
+			"% CPU load", "1% CPU load",
+			"cpu-load", "one-percent-cpu-load-power-watts");
 		printf("\n");
-		show_trend(fp, CPU_ANY, values_ops, n, "bogo op", "1 bogo op");
+		show_trend(fp, CPU_ANY, values_ops, n,
+			"bogo op", "1 bogo op",
+			"bogo-op", "one-bogo-op-power-watts");
 #if defined(PERF_ENABLED)
 		printf("\n");
-		show_trend(fp, CPU_ANY, values_cpu_cycles, n, "CPU cycle", "1 CPU cycle");
+		show_trend(fp, CPU_ANY, values_cpu_cycles, n,
+			"CPU cycle", "1 CPU cycle",
+			"cpu-cycle", "one-cpu-cycle-power-watts");
 		printf("\n");
-		show_trend(fp, CPU_ANY, values_cpu_instr, n, "CPU instruction", "1 CPU instruction");
+		show_trend(fp, CPU_ANY, values_cpu_instr, n,
+			"CPU instruction", "1 CPU instruction",
+			"cpu-instruction", "on-cpu-instruction-power-watts");
 #endif
 	}
 	return 0;
