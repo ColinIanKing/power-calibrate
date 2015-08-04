@@ -137,8 +137,8 @@ typedef struct {
 
 /* CPUs to use from -n option */
 typedef struct cpu_info {
-	int		cpu_id;	/* CPU number, 0 = first CPU */
 	struct cpu_info *next;
+	int		cpu_id;	/* CPU number, 0 = first CPU */
 	pid_t		pid;
 	perf_t		perf;
 } cpu_info_t;
@@ -152,13 +152,13 @@ typedef struct cpu_list {
 
 /* RAPL domain info */
 typedef struct rapl_info {
+	struct rapl_info *next;
 	char 		*name;
 	char 		*domain_name;
 	double 		max_energy_uj;
 	double 		last_energy_uj;
 	double 		t_last;
 	bool 		is_package;
-	struct rapl_info *next;
 } rapl_info_t;
 
 typedef void (*func)(
