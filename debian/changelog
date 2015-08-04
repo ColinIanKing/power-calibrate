@@ -1,3 +1,10 @@
+power-calibrate (0.01.17-1) unstable; urgency=medium
+
+  * Makefile: bump version
+  * Fix units (Watts, Watt-Seconds)
+
+ -- Colin King <colin.king@canonical.com>  Tue, 4 Aug 2015 13:47:12 +0100
+
 power-calibrate (0.01.16-1) unstable; urgency=medium
 
   * Update debian control
