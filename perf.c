@@ -123,7 +123,7 @@ int perf_stop(perf_t *p)
 		uint64_t time_running;		/* perf time running */
 	} perf_data_t;
 
-	size_t i;
+	size_t i = 0;
 	perf_data_t data;
 	ssize_t ret;
 	int rc = -1;
