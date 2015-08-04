@@ -1596,7 +1596,7 @@ static void show_help(char *const argv[])
 	printf("usage: %s [options]\n", argv[0]);
 	printf(" -d secs  specify delay before starting\n");
 	printf(" -h show  help\n");
-	printf(" -n cpus  specify number of CPUs\n");
+	printf(" -n cpus  specify number of CPUs to exercise\n");
 	printf(" -o file  output results into YAML formatted file\n");
 	printf(" -p       show progress\n");
 	printf(" -r secs  specify run duration in seconds of each test cycle\n");
