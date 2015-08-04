@@ -969,7 +969,9 @@ static int power_get_sys_fs(
 #if DETECT_DISCHARGING
 	if (! *discharging) {
 		printf("Machine is not discharging, cannot measure power usage.\n");
+#if defined(RAPL_X86)
 		printf("Alternatively, use the RAPL power measuring option '-R'.\n");
+#endif
 		return -1;
 	}
 #else
