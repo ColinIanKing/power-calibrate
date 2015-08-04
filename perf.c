@@ -185,7 +185,7 @@ out_ok:
  *  perf_counter
  *	fetch counter and index via perf ID
  */
-int perf_counter(
+void perf_counter(
 	const perf_t *p,
 	int id,
 	double *counter)
@@ -194,15 +194,13 @@ int perf_counter(
 	int i;
 
 	for (i = 0; i < PERF_MAX; i++) {
-		if (perf_info[i].id == id) {
+		if (perf_info[i].id == id)
 			*counter = (double)p->perf_stat[i].counter;
-			return 0;
-		}
 	}
-#endif
+#else
 	(void)p;
 	(void)id;
 
 	*counter = 0.0;
-	return -1;
+#endif
 }

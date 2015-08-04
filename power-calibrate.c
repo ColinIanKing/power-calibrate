@@ -256,18 +256,23 @@ static char *units_to_str(
  */
 static char *value_to_str(
 	const double val,
+	const bool inaccurate,
 	char *const buf,
 	const size_t buflen)
 {
-	double v = (double)val;
-	size_t i;
-	static const char scales[] = " KMBTPE";
+	if (inaccurate) {
+		snprintf(buf, buflen, "-N/A-");
+	} else {
+		double v = (double)val;
+		size_t i;
+		static const char scales[] = " KMBTPE";
 
-	for (i = 0; i < sizeof(scales) - 1; i++, v /= 1000) {
-		if (v <= 500)
-			break;
+		for (i = 0; i < sizeof(scales) - 1; i++, v /= 1000) {
+			if (v <= 500)
+				break;
+		}
+		snprintf(buf, buflen, "%5.1f%c", v, scales[i]);
 	}
-	snprintf(buf, buflen, "%5.1f%c", v, scales[i]);
 	return buf;
 }
 
@@ -680,7 +685,6 @@ static bool stats_gather(
 	double total;
 	int i, j;
 	bool inaccurate = false;
-	cpu_info_t *c;
 
 	static int indices[] = {
 		CPU_USER, CPU_NICE, CPU_SYS, CPU_IDLE,
@@ -697,17 +701,28 @@ static bool stats_gather(
 	res->value[CPU_CTXT]	= stats_sane(s1, s2, CPU_CTXT);
 	res->value[CPU_INTR]	= stats_sane(s1, s2, CPU_INTR);
 	res->value[BOGO_OPS]	= stats_sane(s1, s2, BOGO_OPS);
+
 	res->value[CPU_CYCLES]  = 0.0;
+	res->inaccurate[CPU_CYCLES] = false;
+	res->value[CPU_INSTRUCTIONS]  = 0.0;
+	res->inaccurate[CPU_INSTRUCTIONS] = false;
 
-	for (c = cpu_list->head; c; c = c->next) {
-		double value;
+#if defined(PERF_ENABLED)
+	{
+		cpu_info_t *c;
 
-		perf_counter(&c->perf, PERF_HW_CPU_CYCLES, &value);
-		res->value[CPU_CYCLES] += value;
+		for (c = cpu_list->head; c; c = c->next) {
+			double value;
 
-		perf_counter(&c->perf, PERF_HW_INSTRUCTIONS, &value);
-		res->value[CPU_INSTRUCTIONS] += value;
+			perf_counter(&c->perf, PERF_HW_CPU_CYCLES, &value);
+			res->value[CPU_CYCLES] += value;
+			perf_counter(&c->perf, PERF_HW_INSTRUCTIONS, &value);
+			res->value[CPU_INSTRUCTIONS] += value;
+		}
 	}
+#else
+	(void)cpu_list;
+#endif
 
 	for (i = 0; (j = indices[i]) != -1; i++)
 		inaccurate |= (s1->inaccurate[j] | s2->inaccurate[j]);
@@ -750,7 +765,11 @@ static bool stats_gather(
  */
 static void stats_headings(const char *test)
 {
-	printf("%10.10s  User   Sys  Idle  Run  Ctxt/s  IRQ/s  Ops/s Cycl/s Inst/s  Watts\n", test);
+	printf("%10.10s  User   Sys  Idle  Run  Ctxt/s  IRQ/s  Ops/s "
+#if defined(PERF_ENABLED)
+		"Cycl/s Inst/s "
+#endif
+		" Watts\n", test);
 }
 
 /*
@@ -762,7 +781,10 @@ static void stats_print(
 	const bool summary,
 	const stats_t *const s)
 {
-	char buf[10], bogo_ops[10], cpu_cycles[10], cpu_instr[10];
+	char buf[10], bogo_ops[10];
+#if defined(PERF_ENABLED)
+	char cpu_cycles[10], cpu_instr[10];
+#endif
 	char *fmt;
 
 	if (summary) {
@@ -775,19 +797,33 @@ static void stats_print(
 			s->inaccurate[POWER_NOW] ? "E" : "");
 	}
 
-	value_to_str(s->value[BOGO_OPS], bogo_ops, sizeof(bogo_ops));
-	value_to_str(s->value[CPU_CYCLES], cpu_cycles, sizeof(cpu_cycles));
-	value_to_str(s->value[CPU_INSTRUCTIONS], cpu_instr, sizeof(cpu_instr));
+	value_to_str(s->value[BOGO_OPS], s->inaccurate[BOGO_OPS],
+		bogo_ops, sizeof(bogo_ops));
+#if defined(PERF_ENABLED)
+	value_to_str(s->value[CPU_CYCLES], s->inaccurate[CPU_CYCLES],
+		cpu_cycles, sizeof(cpu_cycles));
+	value_to_str(s->value[CPU_INSTRUCTIONS], s->inaccurate[CPU_INSTRUCTIONS],
+		cpu_instr, sizeof(cpu_instr));
+#endif
 
 	fmt = summary ?
+#if defined(PERF_ENABLED)
 		"%10.10s %5.1f %5.1f %5.1f %4.1f %7.1f %6.1f %6s %6s %6s %s\n" :
 		"%10.10s %5.1f %5.1f %5.1f %4.0f %7.0f %6.0f %6s %6s %6s %s\n";
+#else
+		"%10.10s %5.1f %5.1f %5.1f %4.1f %7.1f %6.1f %6s %s\n" :
+		"%10.10s %5.1f %5.1f %5.1f %4.0f %7.0f %6.0f %6s %s\n";
+#endif
 	printf(fmt,
 		prefix,
 		s->value[CPU_USER], s->value[CPU_SYS], s->value[CPU_IDLE],
 		s->value[CPU_PROCS_RUN], s->value[CPU_CTXT],
 		s->value[CPU_INTR],
-		bogo_ops, cpu_cycles, cpu_instr, buf);
+		bogo_ops,
+#if defined(PERF_ENABLED)
+		cpu_cycles, cpu_instr,
+#endif
+		buf);
 }
 
 /*
@@ -1668,7 +1704,8 @@ static void show_trend(
 {
 	char watts[16];
 	double gradient, intercept, r2;
-	double average_voltage = calc_average_voltage(cpus_used, values, num_values);
+	double average_voltage =
+		calc_average_voltage(cpus_used, values, num_values);
 
 	if (calc_trend(cpus_used, values, num_values, &gradient, &intercept, &r2) < 0)
 		return;
@@ -1782,10 +1819,13 @@ static int monitor_cpu_load(
 			show_trend(NULL, cpus_used, values_load, n, "% CPU load", "1% CPU load");
 			printf("\n");
 			show_trend(NULL, cpus_used, values_ops, n, "bogo op", "1 bogo op");
+
+#if defined(PERF_ENABLED)
 			printf("\n");
 			show_trend(NULL, cpus_used, values_cpu_cycles, n, "CPU cycle", "1 CPU cycle");
 			printf("\n");
 			show_trend(NULL, cpus_used, values_cpu_cycles, n, "CPU cycle", "1 CPU cycle");
+#endif
 		}
 	} else {
 		printf("\nFor %d CPU%s (of a %d CPU system):\n",
@@ -1793,10 +1833,12 @@ static int monitor_cpu_load(
 		show_trend(fp, CPU_ANY, values_load, n, "% CPU load", "1% CPU load");
 		printf("\n");
 		show_trend(fp, CPU_ANY, values_ops, n, "bogo op", "1 bogo op");
+#if defined(PERF_ENABLED)
 		printf("\n");
 		show_trend(fp, CPU_ANY, values_cpu_cycles, n, "CPU cycle", "1 CPU cycle");
 		printf("\n");
 		show_trend(fp, CPU_ANY, values_cpu_instr, n, "CPU instruction", "1 CPU instruction");
+#endif
 	}
 	return 0;
 }
