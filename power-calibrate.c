@@ -1604,6 +1604,7 @@ static void show_help(char *const argv[])
 	printf(" -R       use Intel RAPL per CPU package data to measure Watts\n");
 #endif
 	printf(" -s num   number of samples (tests) per CPU for CPU calibration\n");
+	printf("\nExample: power-calibrate  -R -r 20 -d 5 -s 21 -n 0 -p\n");
 }
 
 /*
