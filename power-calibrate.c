@@ -1718,10 +1718,10 @@ static void show_trend(
 		char amps[16], volts[16];
 		units_to_str(average_voltage, "V", volts, sizeof(volts));
 		units_to_str(gradient / average_voltage, "A", amps, sizeof(amps));
-		printf("  Each %s is about %s (about %s @ %s)\n",
+		printf("  %s is about %s (about %s @ %s)\n",
 			each, watts, amps, volts);
 	} else {
-		printf("  Each %s is about %s\n", each, watts);
+		printf("  %s is about %s\n", each, watts);
 	}
 	printf("  Coefficient of determination R^2 = %f (%s)\n",
 		r2, coefficient_r2(r2));
