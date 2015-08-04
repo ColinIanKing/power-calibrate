@@ -165,7 +165,6 @@ typedef void (*func)(
 	uint64_t param, const int instance, bogo_ops_t *bogo_ops);
 
 static volatile bool stop_flag;			/* sighandler stop flag */
-static int32_t max_cpus;			/* number of CPUs in system */
 static int32_t opt_flags;			/* command options */
 static char *app_name = "power-calibrate";	/* application name */
 #if defined(RAPL_X86)
@@ -1699,9 +1698,10 @@ static void show_trend(
  */
 static int monitor_cpu_load(
 	FILE *fp,
-	int32_t num_cpus,
-	int32_t samples_cpu,
-	int32_t sample_delay,
+	const int32_t num_cpus,
+	const int32_t max_cpus,
+	const int32_t samples_cpu,
+	const int32_t sample_delay,
 	cpu_list_t *cpu_list,
 	const int start_delay,
 	const int max_readings,
@@ -1829,7 +1829,11 @@ static int add_cpu_info(cpu_list_t *cpu_list, const int cpu)
  *  parse_cpu_info()
  *	parse cpu info
  */
-static int parse_cpu_info(int32_t *num_cpus, cpu_list_t *cpu_list, char *arg)
+static int parse_cpu_info(
+	int32_t *num_cpus,
+	const int32_t max_cpus,
+	cpu_list_t *cpu_list,
+	char *arg)
 {
 	char *str, *token, *saveptr = NULL;
 	int n = 0;
@@ -1912,6 +1916,7 @@ int main(int argc, char * const argv[])
 	int32_t samples_cpu = 11.0;		/* samples per run */
 	int32_t sample_delay = SAMPLE_DELAY;	/* time between each sampl */
 	int32_t num_cpus;			/* number of CPUs */
+	int32_t max_cpus;			/* number of CPUs in system */
 
 	max_cpus = num_cpus = sysconf(_SC_NPROCESSORS_CONF);
 	if (num_cpus < 0) {
@@ -1939,7 +1944,7 @@ int main(int argc, char * const argv[])
 			show_help(argv);
 			goto out;
 		case 'n':
-			if (parse_cpu_info(&num_cpus, &cpu_list, optarg) < 0)
+			if (parse_cpu_info(&num_cpus, max_cpus, &cpu_list, optarg) < 0)
 				goto out;
 			break;
 		case 'o':
@@ -2028,7 +2033,7 @@ int main(int argc, char * const argv[])
 	if (not_discharging())
 		goto out;
 
-	if (monitor_cpu_load(yaml, num_cpus, samples_cpu, sample_delay,
+	if (monitor_cpu_load(yaml, num_cpus, max_cpus, samples_cpu, sample_delay,
 		&cpu_list, start_delay, max_readings, bogo_ops) < 0)
 		goto out;
 
