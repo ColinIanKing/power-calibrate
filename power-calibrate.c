@@ -1893,10 +1893,10 @@ static int parse_cpu_info(
 	cpu_list_t *cpu_list,
 	char *arg)
 {
-	char *str, *token, *saveptr = NULL;
+	char *str, *token;
 	int n = 0;
 
-	for (str = arg; (token = strtok_r(str, ",", &saveptr)) != NULL; str = NULL) {
+	for (str = arg; (token = strtok(str, ",")) != NULL; str = NULL) {
 		int cpu;
 		char *endptr;
 
