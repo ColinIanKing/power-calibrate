@@ -11,7 +11,8 @@ Architecture: linux-any
 Depends: ${shlibs:Depends}, ${misc:Depends}
 Description: laptop power calibration tool
  Power-calibrate calibrates the power consumption of a mobile
- device that has a battery power source.  It will attempt to
- calculate the power usage of 1% of CPU utiltisation and
- 1 context switch.
+ device that has a battery power source or of an modern Intel
+ device has RAPL support..  It will attempt to calculate the
+ power usage of 1% of CPU utilisation (and 1 instruction and
+ 1 cpu cycle if perf is available).
 
