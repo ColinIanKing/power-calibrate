@@ -672,7 +672,7 @@ static double stats_sane(
  */
 static bool stats_gather(
 	cpu_list_t *cpu_list,
-	uint32_t sample_delay,
+	const uint32_t sample_delay,
 	const stats_t *const s1,
 	const stats_t *const s2,
 	stats_t *const res)
