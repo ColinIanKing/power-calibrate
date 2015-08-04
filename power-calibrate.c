@@ -57,7 +57,8 @@
 #define MIN_RUN_DURATION	(10)	/* Minimum run duration */
 #define DEFAULT_RUN_DURATION	(120)	/* Default duration */
 #define SAMPLE_DELAY		(1)	/* Delay between samples in seconds */
-#define START_DELAY		(20)	/* Delay to wait before sampling */
+#define START_DELAY_BATTERY 	(20)	/* Delay to wait before sampling */
+#define START_DELAY_RAPL    	(0)	/* Delay to wait before sampling */
 #define	RATE_ZERO_LIMIT		(0.001)	/* Less than this is a 0 power rate */
 #define MAX_CPU_LOAD		(100)	/* Maximum CPU load */
 #define DEFAULT_TIMEOUT		(10)	/* Zero load sleep duration */
@@ -65,6 +66,7 @@
 
 #define DETECT_DISCHARGING	(1)
 
+#define OPT_DELAY		(0x00000001)
 #define OPT_PROGRESS		(0x00000002)
 #define OPT_CALIBRATE_EACH_CPU	(0x00000004)
 #define OPT_RAPL		(0x00000008)
@@ -965,6 +967,7 @@ static int power_get_sys_fs(
 #if DETECT_DISCHARGING
 	if (! *discharging) {
 		printf("Machine is not discharging, cannot measure power usage.\n");
+		printf("Alternatively, use the RAPL power measuring option '-R'.\n");
 		return -1;
 	}
 #else
@@ -1581,7 +1584,7 @@ static void show_help(char *const argv[])
 {
 	printf("%s, version %s\n\n", app_name, VERSION);
 	printf("usage: %s [options]\n", argv[0]);
-	printf(" -d secs  specify delay before starting, default is %d seconds\n", START_DELAY);
+	printf(" -d secs  specify delay before starting\n");
 	printf(" -h show  help\n");
 	printf(" -n cpus  specify number of CPUs\n");
 	printf(" -o file  output results into YAML formatted file\n");
@@ -1949,7 +1952,7 @@ static void free_cpu_info(cpu_list_t *cpu_list)
 
 int main(int argc, char * const argv[])
 {
-	int max_readings, run_duration, start_delay = START_DELAY;
+	int max_readings, run_duration, start_delay = START_DELAY_BATTERY;
 	int opt_run_duration = DEFAULT_RUN_DURATION;
 	char *filename = NULL;
 	FILE *yaml = NULL;
@@ -1978,6 +1981,7 @@ int main(int argc, char * const argv[])
 			break;
 		switch (c) {
 		case 'd':
+			opt_flags |= OPT_DELAY;
 			start_delay = atoi(optarg);
 			if (start_delay < 0) {
 				fprintf(stderr, "Start delay must be 0 or more seconds.\n");
@@ -2026,6 +2030,9 @@ int main(int argc, char * const argv[])
 			goto out;
 		}
 	}
+
+	if ((opt_flags & (OPT_RAPL | OPT_DELAY)) == OPT_RAPL)
+		start_delay = START_DELAY_RAPL;
 
 	populate_cpu_info(num_cpus, &cpu_list);
 
