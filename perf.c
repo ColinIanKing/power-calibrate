@@ -60,7 +60,7 @@ static const perf_info_t perf_info[PERF_MAX] = {
 	PERF_INFO(HARDWARE, HW_INSTRUCTIONS),
 };
 
-int perf_start(perf_t *p, pid_t pid)
+int perf_start(perf_t *p, const pid_t pid)
 {
 	int i;
 
@@ -174,7 +174,7 @@ out_ok:
  */
 void perf_counter(
 	const perf_t *p,
-	int id,
+	const int id,
 	double *counter)
 {
 	int i;

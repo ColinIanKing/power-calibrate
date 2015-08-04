@@ -62,6 +62,6 @@ typedef struct {
 
 extern int perf_start(perf_t *p, const pid_t pid);
 extern int perf_stop(perf_t *p);
-extern void perf_counter(const perf_t *p, int id, double *counter);
+extern void perf_counter(const perf_t *p, const int id, double *counter);
 
 #endif
