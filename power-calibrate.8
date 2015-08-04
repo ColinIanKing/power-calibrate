@@ -26,7 +26,8 @@ power-calibrate \- a tool to calibrate power consumption.
 .br
 
 .SH DESCRIPTION
-Power-calibrate calibrates the power consumption of a mobile device that has a battery power source or a recent Intel processor using the RAPL (Running Average Power Limit) interface.  It will attempt to calculate the power usage of 1% of CPU utiltisation.
+Power-calibrate calibrates the power consumption of a mobile device that has a battery power source or a recent Intel processor using the RAPL (Running Average Power Limit) interface.  It will attempt to calculate the power usage of 1% of CPU utiltisation. If perf is available, power-calibrate
+will also attempt to estimate the power consumption of 1 CPU cycle and 1 CPU instruction.
 
 .SH OPTIONS
 power-calibrate options are as follow:
