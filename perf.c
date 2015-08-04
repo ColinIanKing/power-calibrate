@@ -108,6 +108,9 @@ int perf_start(perf_t *p, pid_t pid)
 	}
 	return 0;
 #else
+	(void)p;
+	(void)pid;
+
 	return -1;
 #endif
 }
@@ -172,6 +175,8 @@ out_ok:
 
 	return rc;
 #else
+	(void)p;
+
 	return 0;
 #endif
 }
@@ -195,6 +200,9 @@ int perf_counter(
 		}
 	}
 #endif
+	(void)p;
+	(void)id;
+
 	*counter = 0.0;
 	return -1;
 }
