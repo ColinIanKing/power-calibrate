@@ -1311,7 +1311,7 @@ static inline bool not_discharging(rapl_info_t *rapl_list)
  *   monitor()
  *	monitor system activity and power consumption
  */
-static int monitor(
+static inline int monitor(
 	const int num_cpus,
 	cpu_list_t *cpu_list,
 	rapl_info_t *rapl_list,
