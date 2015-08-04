@@ -18,7 +18,7 @@
  * Author: Colin Ian King <colin.king@canonical.com>
  *
  * Much of this code was derived from other GPL-2+ projects by the author
- * such as powerstat and fnotifysta.
+ * such as powerstat, fnotifystat and stress-ng.
  */
 #define _GNU_SOURCE
 
@@ -54,13 +54,13 @@
 
 #include "perf.h"
 
-#define MIN_RUN_DURATION	(2)
-#define DEFAULT_RUN_DURATION	(120)
+#define MIN_RUN_DURATION	(10)	/* Minimum run duration */
+#define DEFAULT_RUN_DURATION	(120)	/* Default duration */
 #define SAMPLE_DELAY		(1)	/* Delay between samples in seconds */
 #define START_DELAY		(20)	/* Delay to wait before sampling */
 #define	RATE_ZERO_LIMIT		(0.001)	/* Less than this is a 0 power rate */
-#define MAX_CPU_LOAD		(100)
-#define DEFAULT_TIMEOUT		(10)
+#define MAX_CPU_LOAD		(100)	/* Maximum CPU load */
+#define DEFAULT_TIMEOUT		(10)	/* Zero load sleep duration */
 #define CPU_ANY			(-1)
 
 #define DETECT_DISCHARGING	(1)
@@ -95,8 +95,8 @@
 #define POWER_DOMAIN_0          (20)
 #define MAX_VALUES		(POWER_DOMAIN_0 + MAX_POWER_VALUES)
 
-#define MWC_SEED_Z		(362436069ULL)
-#define MWC_SEED_W		(521288629ULL)
+#define MWC_SEED_Z		(362436069UL)
+#define MWC_SEED_W		(521288629UL)
 
 #define SYS_CLASS_POWER_SUPPLY	"/sys/class/power_supply"
 #define PROC_ACPI_BATTERY	"/proc/acpi/battery"
@@ -169,10 +169,8 @@ static volatile bool stop_flag;			/* sighandler stop flag */
 static int32_t num_cpus;			/* number of CPUs */
 static int32_t max_cpus;			/* number of CPUs in system */
 static int32_t opt_flags;			/* command options */
-static int32_t samples_cpu = 11.0;
-static char *app_name = "power-calibrate";
-static bogo_ops_t *bogo_ops;
-static cpu_list_t cpu_list;
+static int32_t samples_cpu = 11.0;		/* samples per run */
+static char *app_name = "power-calibrate";	/* application name */
 #if defined(RAPL_X86)
 static rapl_info_t *rapl_list = NULL;		/* RAPL domain info list */
 static uint8_t power_domains = 0;		/* Number of power domains */
@@ -242,6 +240,7 @@ static char *units_to_str(
 	const size_t buflen)
 {
 	double v = (double)val;
+	size_t i;
 	static const char *scales[] = {
 		"",
 		"m",
@@ -251,7 +250,6 @@ static char *units_to_str(
 		"f",
 		NULL
 	};
-	size_t i;
 
 	for (i = 0; i < 6; i++, v *= 1000) {
 		if (v > 0.5)
@@ -270,8 +268,8 @@ static char *value_to_str(
 	const size_t buflen)
 {
 	double v = (double)val;
-	static const char scales[] = " KMBTPE";
 	size_t i;
+	static const char scales[] = " KMBTPE";
 
 	for (i = 0; i < sizeof(scales) - 1; i++, v /= 1000) {
 		if (v <= 500)
@@ -440,18 +438,18 @@ static void stress_cpu(
  *  stop_load()
  *	kill load child processes
  */
-static void stop_load(const int total_procs)
+static void stop_load(cpu_list_t *cpu_list, const int total_procs)
 {
 	int i;
 	cpu_info_t *c;
 
 	/* Kill.. */
-	for (c = cpu_list.head, i = 0; c && i < total_procs; c = c->next, i++) {
+	for (c = cpu_list->head, i = 0; c && i < total_procs; c = c->next, i++) {
 		if (c->pid > -1)
 			kill(c->pid, SIGKILL);
 	}
 	/* And ensure we don't get zombies */
-	for (c = cpu_list.head, i = 0; c && i < total_procs; c = c->next, i++) {
+	for (c = cpu_list->head, i = 0; c && i < total_procs; c = c->next, i++) {
 		if (c->pid > -1) {
 			int status;
 
@@ -465,6 +463,7 @@ static void stop_load(const int total_procs)
  *	load system with some stress processes
  */
 void start_load(
+	cpu_list_t *cpu_list,
 	const int total_procs,
 	const func load_func,
 	const uint64_t param,
@@ -484,7 +483,7 @@ void start_load(
 		(void)siginterrupt(signals[i], 1);
 	}
 
-	for (c = cpu_list.head, i= 0;
+	for (c = cpu_list->head, i= 0;
 		c && i < total_procs; c = c->next, i++) {
 		c->pid = fork();
 
@@ -492,7 +491,7 @@ void start_load(
 		case -1:
 			fprintf(stderr, "Cannot fork, errno=%d (%s)\n",
 				errno, strerror(errno));
-			stop_load(i);
+			stop_load(cpu_list, i);
 			exit(EXIT_FAILURE);
 		case 0:
 			/* Child */
@@ -677,6 +676,7 @@ static double stats_sane(
  * 	some form of per sample accounting calculated.
  */
 static bool stats_gather(
+	cpu_list_t *cpu_list,
 	const stats_t *const s1,
 	const stats_t *const s2,
 	stats_t *const res)
@@ -701,10 +701,9 @@ static bool stats_gather(
 	res->value[CPU_CTXT]	= stats_sane(s1, s2, CPU_CTXT);
 	res->value[CPU_INTR]	= stats_sane(s1, s2, CPU_INTR);
 	res->value[BOGO_OPS]	= stats_sane(s1, s2, BOGO_OPS);
-
 	res->value[CPU_CYCLES]  = 0.0;
 
-	for (c = cpu_list.head; c; c = c->next) {
+	for (c = cpu_list->head; c; c = c->next) {
 		double value;
 
 		perf_counter(&c->perf, PERF_HW_CPU_CYCLES, &value);
@@ -1265,6 +1264,7 @@ static int power_get_rapl(
 	return 0;
 }
 #endif
+
 /*
  *  power_get()
  *	get consumption rate
@@ -1315,6 +1315,7 @@ static inline bool not_discharging(void)
  *	monitor system activity and power consumption
  */
 static int monitor(
+	cpu_list_t *cpu_list,
 	const int start_delay,
 	const int max_readings,
 	const char *test,
@@ -1384,7 +1385,7 @@ static int monitor(
 			free(stats);
 			return -1;
 		}
-		for (c = cpu_list.head; c; c = c->next)
+		for (c = cpu_list->head; c; c = c->next)
 			perf_start(&c->perf, c->pid);
 
 		if (opt_flags & OPT_PROGRESS) {
@@ -1401,7 +1402,7 @@ static int monitor(
 		tv = double_to_timeval(secs);
 		ret = select(0, NULL, NULL, NULL, &tv);
 		if (ret < 0) {
-			for (c = cpu_list.head; c; c = c->next)
+			for (c = cpu_list->head; c; c = c->next)
 				perf_stop(&c->perf);
 			if (errno == EINTR)
 				break;
@@ -1418,7 +1419,7 @@ sample_now:
 			char tmbuffer[10];
 			bool discharging;
 
-			for (c = cpu_list.head; c; c = c->next)
+			for (c = cpu_list->head; c; c = c->next)
 				perf_stop(&c->perf);
 
 			get_time(tmbuffer, sizeof(tmbuffer));
@@ -1429,7 +1430,7 @@ sample_now:
 			 *  Total ticks was zero, something is broken,
 			 *  so re-sample
 			 */
-			if (!stats_gather(&s1, &s2, &stats[readings])) {
+			if (!stats_gather(cpu_list, &s1, &s2, &stats[readings])) {
 				stats_clear(&stats[readings]);
 				if (stats_read(&s1, bogo_ops) < 0)
 					goto tidy_exit;
@@ -1697,6 +1698,7 @@ static void show_trend(
  */
 static int monitor_cpu_load(
 	FILE *fp,
+	cpu_list_t *cpu_list,
 	const int start_delay,
 	const int max_readings,
 	bogo_ops_t *bogo_ops)
@@ -1713,7 +1715,7 @@ static int monitor_cpu_load(
 		cpu_info_t *c;
 		uint32_t n_cpus;
 
-		for (n_cpus = 1, c = cpu_list.head; c; n_cpus++, c = c->next) {
+		for (n_cpus = 1, c = cpu_list->head; c; n_cpus++, c = c->next) {
 			char buffer[1024];
 			int cpu_load = scale * i;
 			int ret;
@@ -1722,10 +1724,11 @@ static int monitor_cpu_load(
 
 			snprintf(buffer, sizeof(buffer), "%d%% x %d",
 				cpu_load, n_cpus);
-			start_load(n_cpus, stress_cpu,
+			start_load(cpu_list, n_cpus, stress_cpu,
 				(uint64_t)cpu_load, bogo_ops);
 
-			ret = monitor(start_delay, max_readings, buffer,
+			ret = monitor(cpu_list, start_delay,
+				max_readings, buffer,
 				percent_each, percent, bogo_ops,
 				&value_load->x, &value_load->y,
 				&value_load->voltage,
@@ -1747,7 +1750,7 @@ static int monitor_cpu_load(
 			value_cpu_instr->cpu_id = value_load->cpu_id;
 			value_cpu_instr->cpus_used = value_load->cpus_used;
 
-			stop_load(n_cpus);
+			stop_load(cpu_list, n_cpus);
 			if (stop_flag || (ret < 0))
 				return -1;
 			value_load++;
@@ -1767,7 +1770,7 @@ static int monitor_cpu_load(
 		cpu_info_t *c;
 		int cpus_used = 0;
 
-		for (c = cpu_list.head, cpus_used = 1; c; c = c->next, cpus_used++) {
+		for (c = cpu_list->head, cpus_used = 1; c; c = c->next, cpus_used++) {
 			printf("\nFor %d CPU%s (of a %d CPU system):\n",
 				cpus_used, cpus_used > 1 ? "s" : "", max_cpus);
 			show_trend(NULL, cpus_used, values_load, n, "% CPU load", "1% CPU load");
@@ -1780,7 +1783,7 @@ static int monitor_cpu_load(
 		}
 	} else {
 		printf("\nFor %d CPU%s (of a %d CPU system):\n",
-			cpu_list.count, cpu_list.count > 1 ? "s" : "", max_cpus);
+			cpu_list->count, cpu_list->count > 1 ? "s" : "", max_cpus);
 		show_trend(fp, CPU_ANY, values_load, n, "% CPU load", "1% CPU load");
 		printf("\n");
 		show_trend(fp, CPU_ANY, values_ops, n, "bogo op", "1 bogo op");
@@ -1796,7 +1799,7 @@ static int monitor_cpu_load(
  *  add_cpu_info()
  *	add cpu # to cpu_info list
  */
-static int add_cpu_info(int cpu)
+static int add_cpu_info(cpu_list_t *cpu_list, const int cpu)
 {
 	cpu_info_t *c;
 
@@ -1805,14 +1808,14 @@ static int add_cpu_info(int cpu)
 		fprintf(stderr, "Out of memory allocating CPU  info.\n");
 		return -1;
 	}
-	if (cpu_list.head)
-		cpu_list.tail->next = c;
+	if (cpu_list->head)
+		cpu_list->tail->next = c;
 	else
-		cpu_list.head = c;
+		cpu_list->head = c;
 
 	c->cpu_id = cpu;
-	cpu_list.tail = c;
-	cpu_list.count++;
+	cpu_list->tail = c;
+	cpu_list->count++;
 
 	return 0;
 }
@@ -1822,7 +1825,7 @@ static int add_cpu_info(int cpu)
  *  parse_cpu_info()
  *	parse cpu info
  */
-static int parse_cpu_info(char *arg)
+static int parse_cpu_info(cpu_list_t *cpu_list, char *arg)
 {
 	char *str, *token, *saveptr = NULL;
 	int n = 0;
@@ -1841,11 +1844,11 @@ static int parse_cpu_info(char *arg)
 			fprintf(stderr, "CPU number out of range.\n");
 			return -1;
 		}
-		if (add_cpu_info(cpu) < 0)
+		if (add_cpu_info(cpu_list, cpu) < 0)
 			return -1;
 		n++;
 	}
-	if (!cpu_list.head) {
+	if (!cpu_list->head) {
 		fprintf(stderr, "No valid CPU numbers given.\n");
 		return -1;
 	}
@@ -1860,15 +1863,15 @@ static int parse_cpu_info(char *arg)
  *	if user has not supplied cpu info then
  *	we need to populate the list
  */
-static inline int populate_cpu_info(void)
+static inline int populate_cpu_info(cpu_list_t *cpu_list)
 {
 	int cpu;
 
-	if (cpu_list.head)
+	if (cpu_list->head)
 		return 0;
 
 	for (cpu = 0; cpu < num_cpus; cpu++)
-		if (add_cpu_info(cpu) < 0)
+		if (add_cpu_info(cpu_list, cpu) < 0)
 			return -1;
 
 	return 0;
@@ -1878,18 +1881,18 @@ static inline int populate_cpu_info(void)
  *  free_cpu_info()
  *	free CPU info list
  */
-static void free_cpu_info(void)
+static void free_cpu_info(cpu_list_t *cpu_list)
 {
-	cpu_info_t *c = cpu_list.head;
+	cpu_info_t *c = cpu_list->head;
 
 	while (c) {
 		cpu_info_t *next = c->next;
 		free(c);
 		c = next;
 	}
-	cpu_list.head = NULL;
-	cpu_list.tail = NULL;
-	cpu_list.count = 0;
+	cpu_list->head = NULL;
+	cpu_list->tail = NULL;
+	cpu_list->count = 0;
 }
 
 int main(int argc, char * const argv[])
@@ -1900,6 +1903,8 @@ int main(int argc, char * const argv[])
 	FILE *yaml = NULL;
 	int ret = EXIT_FAILURE, i;
 	struct sigaction new_action;
+	bogo_ops_t *bogo_ops = NULL;
+	cpu_list_t cpu_list;
 
 	max_cpus = num_cpus = sysconf(_SC_NPROCESSORS_CONF);
 	if (num_cpus < 0) {
@@ -1927,7 +1932,7 @@ int main(int argc, char * const argv[])
 			show_help(argv);
 			goto out;
 		case 'n':
-			if (parse_cpu_info(optarg) < 0)
+			if (parse_cpu_info(&cpu_list, optarg) < 0)
 				goto out;
 			break;
 		case 'o':
@@ -1963,7 +1968,7 @@ int main(int argc, char * const argv[])
 		}
 	}
 
-	populate_cpu_info();
+	populate_cpu_info(&cpu_list);
 
 #if defined(RAPL_X86)
 	if ((opt_flags & OPT_RAPL) && (rapl_get_domains() < 1))
@@ -2016,7 +2021,7 @@ int main(int argc, char * const argv[])
 	if (not_discharging())
 		goto out;
 
-	if (monitor_cpu_load(yaml, start_delay, max_readings, bogo_ops) < 0)
+	if (monitor_cpu_load(yaml, &cpu_list, start_delay, max_readings, bogo_ops) < 0)
 		goto out;
 
 	ret = EXIT_SUCCESS;
@@ -2032,7 +2037,7 @@ out:
 			unlink(filename);
 	}
 	if (cpu_list.head)
-		free_cpu_info();
+		free_cpu_info(&cpu_list);
 
 	exit(ret);
 }
