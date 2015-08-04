@@ -172,7 +172,6 @@ static int32_t opt_flags;			/* command options */
 static char *app_name = "power-calibrate";	/* application name */
 #if defined(RAPL_X86)
 static rapl_info_t *rapl_list = NULL;		/* RAPL domain info list */
-static uint8_t power_domains = 0;		/* Number of power domains */
 #endif
 
 /*
@@ -1182,7 +1181,6 @@ static int rapl_get_domains(void)
 		n++;
 	}
 	(void)closedir(dir);
-	power_domains = n;
 
 	if (!n)
 		printf("Device does not have any RAPL domains, cannot power measure power usage.\n");
