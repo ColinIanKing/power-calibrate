@@ -142,7 +142,9 @@ typedef struct cpu_info {
 	struct cpu_info *next;
 	int		cpu_id;	/* CPU number, 0 = first CPU */
 	pid_t		pid;
+#if defined(PERF_ENABLED)
 	perf_t		perf;
+#endif
 } cpu_info_t;
 
 /* CPU list */
@@ -1373,7 +1375,6 @@ static inline int monitor(
 	stats_t *stats, s1, s2, average, stddev;
 	bool discharging, dummy_inaccurate;
 	double time_start;
-	cpu_info_t *c;
 
 	if (start_delay > 0) {
 		stats_t dummy;
@@ -1419,13 +1420,18 @@ static inline int monitor(
 		int ret = 0;
 		double secs, time_now;
 		struct timeval tv;
+#if defined(PERF_ENABLED)
+		cpu_info_t *c;
+#endif
 
 		if ((time_now = gettime_to_double()) < 0.0) {
 			free(stats);
 			return -1;
 		}
+#if defined(PERF_ENABLED)
 		for (c = cpu_list->head; c; c = c->next)
 			perf_start(&c->perf, c->pid);
+#endif
 
 		if (opt_flags & OPT_PROGRESS) {
 			double progress = readings * 100.0 / max_readings;
@@ -1441,8 +1447,10 @@ static inline int monitor(
 		tv = double_to_timeval(secs);
 		ret = select(0, NULL, NULL, NULL, &tv);
 		if (ret < 0) {
+#if defined(PERF_ENABLED)
 			for (c = cpu_list->head; c; c = c->next)
 				perf_stop(&c->perf);
+#endif
 			if (errno == EINTR)
 				break;
 			fprintf(stderr,"select failed: errno=%d (%s).\n",
@@ -1458,8 +1466,10 @@ sample_now:
 			char tmbuffer[10];
 			bool discharging;
 
+#if defined(PERF_ENABLED)
 			for (c = cpu_list->head; c; c = c->next)
 				perf_stop(&c->perf);
+#endif
 
 			get_time(tmbuffer, sizeof(tmbuffer));
 			if (stats_read(num_cpus, &s2, bogo_ops) < 0)

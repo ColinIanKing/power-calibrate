@@ -26,6 +26,8 @@
 
 #include "perf.h"
 
+#if defined(PERF_ENABLED)
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -60,7 +62,6 @@ static const perf_info_t perf_info[PERF_MAX] = {
 
 int perf_start(perf_t *p, pid_t pid)
 {
-#if defined(PERF_ENABLED)
 	int i;
 
 	memset(p, 0, sizeof(perf_t));
@@ -107,12 +108,6 @@ int perf_start(perf_t *p, pid_t pid)
 		}
 	}
 	return 0;
-#else
-	(void)p;
-	(void)pid;
-
-	return -1;
-#endif
 }
 
 /*
@@ -121,7 +116,6 @@ int perf_start(perf_t *p, pid_t pid)
  */
 int perf_stop(perf_t *p)
 {
-#if defined(PERF_ENABLED)
 	/* perf data */
 	typedef struct {
 		uint64_t counter;		/* perf counter */
@@ -174,11 +168,6 @@ out_ok:
 		p->perf_stat[i].counter = PERF_INVALID;
 
 	return rc;
-#else
-	(void)p;
-
-	return 0;
-#endif
 }
 
 /*
@@ -190,17 +179,11 @@ void perf_counter(
 	int id,
 	double *counter)
 {
-#if defined(PERF_ENABLED)
 	int i;
 
 	for (i = 0; i < PERF_MAX; i++) {
 		if (perf_info[i].id == id)
 			*counter = (double)p->perf_stat[i].counter;
 	}
-#else
-	(void)p;
-	(void)id;
-
-	*counter = 0.0;
-#endif
 }
+#endif
