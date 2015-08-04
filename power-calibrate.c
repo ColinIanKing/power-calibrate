@@ -169,7 +169,6 @@ static volatile bool stop_flag;			/* sighandler stop flag */
 static int32_t num_cpus;			/* number of CPUs */
 static int32_t max_cpus;			/* number of CPUs in system */
 static int32_t opt_flags;			/* command options */
-static int32_t samples_cpu = 11.0;		/* samples per run */
 static char *app_name = "power-calibrate";	/* application name */
 #if defined(RAPL_X86)
 static rapl_info_t *rapl_list = NULL;		/* RAPL domain info list */
@@ -1698,6 +1697,7 @@ static void show_trend(
  */
 static int monitor_cpu_load(
 	FILE *fp,
+	int32_t samples_cpu,
 	cpu_list_t *cpu_list,
 	const int start_delay,
 	const int max_readings,
@@ -1905,6 +1905,7 @@ int main(int argc, char * const argv[])
 	struct sigaction new_action;
 	bogo_ops_t *bogo_ops = NULL;
 	cpu_list_t cpu_list;
+	int32_t samples_cpu = 11.0;		/* samples per run */
 
 	max_cpus = num_cpus = sysconf(_SC_NPROCESSORS_CONF);
 	if (num_cpus < 0) {
@@ -2021,7 +2022,8 @@ int main(int argc, char * const argv[])
 	if (not_discharging())
 		goto out;
 
-	if (monitor_cpu_load(yaml, &cpu_list, start_delay, max_readings, bogo_ops) < 0)
+	if (monitor_cpu_load(yaml, samples_cpu, &cpu_list, start_delay,
+		max_readings, bogo_ops) < 0)
 		goto out;
 
 	ret = EXIT_SUCCESS;
