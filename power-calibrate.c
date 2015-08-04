@@ -1322,6 +1322,8 @@ static int power_get(
 #if defined(RAPL_X86)
 	if (opt_flags & OPT_RAPL)
 		return power_get_rapl(rapl_list, stats, discharging);
+#else
+	(void)rapl_list;
 #endif
 
 	if ((stat(SYS_CLASS_POWER_SUPPLY, &buf) != -1) &&
@@ -1988,9 +1990,7 @@ int main(int argc, char * const argv[])
 	int ret = EXIT_FAILURE, i;
 	struct sigaction new_action;
 	bogo_ops_t *bogo_ops = NULL;
-#if defined(RAPL_X86)
 	rapl_info_t *rapl_list = NULL;		/* RAPL domain info list */
-#endif
 	cpu_list_t cpu_list;
 	int32_t samples_cpu = 11.0;		/* samples per run */
 	int32_t sample_delay = SAMPLE_DELAY;	/* time between each sampl */
