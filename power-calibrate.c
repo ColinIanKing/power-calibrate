@@ -165,7 +165,6 @@ typedef void (*func)(
 	uint64_t param, const int instance, bogo_ops_t *bogo_ops);
 
 static volatile bool stop_flag;			/* sighandler stop flag */
-static int32_t num_cpus;			/* number of CPUs */
 static int32_t max_cpus;			/* number of CPUs in system */
 static int32_t opt_flags;			/* command options */
 static char *app_name = "power-calibrate";	/* application name */
@@ -573,7 +572,10 @@ static void stats_clear_all(stats_t *const stats, const int n)
  *  stats_read()
  *	gather pertinent /proc/stat data
  */
-static int stats_read(stats_t *const stats, bogo_ops_t *bogo_ops)
+static int stats_read(
+	const int32_t num_cpus,
+	stats_t *const stats,
+	bogo_ops_t *bogo_ops)
 {
 	FILE *fp;
 	char buf[4096];
@@ -1312,6 +1314,7 @@ static inline bool not_discharging(void)
  *	monitor system activity and power consumption
  */
 static int monitor(
+	const int num_cpus,
 	cpu_list_t *cpu_list,
 	const int start_delay,
 	const int sample_delay,
@@ -1369,7 +1372,7 @@ static int monitor(
 		return -1;
 	}
 
-	if (stats_read(&s1, bogo_ops) < 0) {
+	if (stats_read(num_cpus, &s1, bogo_ops) < 0) {
 		free(stats);
 		return -1;
 	}
@@ -1421,7 +1424,7 @@ sample_now:
 				perf_stop(&c->perf);
 
 			get_time(tmbuffer, sizeof(tmbuffer));
-			if (stats_read(&s2, bogo_ops) < 0)
+			if (stats_read(num_cpus, &s2, bogo_ops) < 0)
 				goto tidy_exit;
 
 			/*
@@ -1430,7 +1433,7 @@ sample_now:
 			 */
 			if (!stats_gather(cpu_list, sample_delay, &s1, &s2, &stats[readings])) {
 				stats_clear(&stats[readings]);
-				if (stats_read(&s1, bogo_ops) < 0)
+				if (stats_read(num_cpus, &s1, bogo_ops) < 0)
 					goto tidy_exit;
 				continue;
 			}
@@ -1696,6 +1699,7 @@ static void show_trend(
  */
 static int monitor_cpu_load(
 	FILE *fp,
+	int32_t num_cpus,
 	int32_t samples_cpu,
 	int32_t sample_delay,
 	cpu_list_t *cpu_list,
@@ -1727,7 +1731,7 @@ static int monitor_cpu_load(
 			start_load(cpu_list, n_cpus, stress_cpu,
 				(uint64_t)cpu_load, bogo_ops);
 
-			ret = monitor(cpu_list, start_delay, sample_delay,
+			ret = monitor(num_cpus, cpu_list, start_delay, sample_delay,
 				max_readings, buffer,
 				percent_each, percent, bogo_ops,
 				&value_load->x, &value_load->y,
@@ -1825,7 +1829,7 @@ static int add_cpu_info(cpu_list_t *cpu_list, const int cpu)
  *  parse_cpu_info()
  *	parse cpu info
  */
-static int parse_cpu_info(cpu_list_t *cpu_list, char *arg)
+static int parse_cpu_info(int32_t *num_cpus, cpu_list_t *cpu_list, char *arg)
 {
 	char *str, *token, *saveptr = NULL;
 	int n = 0;
@@ -1853,7 +1857,7 @@ static int parse_cpu_info(cpu_list_t *cpu_list, char *arg)
 		return -1;
 	}
 
-	num_cpus = n;
+	*num_cpus = n;
 
 	return 0;
 }
@@ -1863,7 +1867,7 @@ static int parse_cpu_info(cpu_list_t *cpu_list, char *arg)
  *	if user has not supplied cpu info then
  *	we need to populate the list
  */
-static inline int populate_cpu_info(cpu_list_t *cpu_list)
+static inline int populate_cpu_info(const int32_t num_cpus, cpu_list_t *cpu_list)
 {
 	int cpu;
 
@@ -1907,6 +1911,7 @@ int main(int argc, char * const argv[])
 	cpu_list_t cpu_list;
 	int32_t samples_cpu = 11.0;		/* samples per run */
 	int32_t sample_delay = SAMPLE_DELAY;	/* time between each sampl */
+	int32_t num_cpus;			/* number of CPUs */
 
 	max_cpus = num_cpus = sysconf(_SC_NPROCESSORS_CONF);
 	if (num_cpus < 0) {
@@ -1934,7 +1939,7 @@ int main(int argc, char * const argv[])
 			show_help(argv);
 			goto out;
 		case 'n':
-			if (parse_cpu_info(&cpu_list, optarg) < 0)
+			if (parse_cpu_info(&num_cpus, &cpu_list, optarg) < 0)
 				goto out;
 			break;
 		case 'o':
@@ -1970,7 +1975,7 @@ int main(int argc, char * const argv[])
 		}
 	}
 
-	populate_cpu_info(&cpu_list);
+	populate_cpu_info(num_cpus, &cpu_list);
 
 #if defined(RAPL_X86)
 	if ((opt_flags & OPT_RAPL) && (rapl_get_domains() < 1))
@@ -2023,8 +2028,8 @@ int main(int argc, char * const argv[])
 	if (not_discharging())
 		goto out;
 
-	if (monitor_cpu_load(yaml, samples_cpu, sample_delay, &cpu_list, start_delay,
-		max_readings, bogo_ops) < 0)
+	if (monitor_cpu_load(yaml, num_cpus, samples_cpu, sample_delay,
+		&cpu_list, start_delay, max_readings, bogo_ops) < 0)
 		goto out;
 
 	ret = EXIT_SUCCESS;
