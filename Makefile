@@ -26,7 +26,7 @@ MANDIR=/usr/share/man/man8
 SRC = power-calibrate.c perf.c
 OBJS = $(SRC:.c=.o)
 
-power-calibrate: $(OBJS)
+power-calibrate: $(OBJS) Makefile
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(OBJS) -lm -o $@ $(LDFLAGS)
 
 power-calibrate.8.gz: power-calibrate.8
