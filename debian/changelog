@@ -1,3 +1,10 @@
+power-calibrate (0.01.18-1) unstable; urgency=medium
+
+  * Makefile: bump version
+  * Debian: control: fix '..' typo, make lines wider
+
+ -- Colin King <colin.king@canonical.com>  Tue, 4 Aug 2015 16:13:12 +0100
+
 power-calibrate (0.01.17-1) unstable; urgency=medium
 
   * Makefile: bump version
