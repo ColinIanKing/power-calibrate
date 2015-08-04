@@ -1720,7 +1720,8 @@ static void show_trend(
 	const char *unit,
 	const char *each,
 	const char *heading,
-	const char *field)
+	const char *field,
+	bool power)
 {
 	char watts[16];
 	double gradient, intercept, r2;
@@ -1732,7 +1733,9 @@ static void show_trend(
 
 	units_to_str(gradient, "W", watts, sizeof(watts));
 
-	printf("  Power (Watts) = (%s * %e) + %f\n",
+	printf("  %s (%s) = (%s * %e) + %f\n",
+		power ? "Power" : "Energy",
+		power ? "Watts" : "Watt-seconds",
 		unit, gradient, intercept);
 	if (average_voltage > 0) {
 		char amps[16], volts[16];
@@ -1741,7 +1744,8 @@ static void show_trend(
 		printf("  %s is about %s (about %s @ %s)\n",
 			each, watts, amps, volts);
 	} else {
-		printf("  %s is about %s\n", each, watts);
+		printf("  %s is about %s%s\n", each, watts,
+			power ? "" : "s");
 	}
 	printf("  Coefficient of determination R^2 = %f (%s)\n",
 		r2, coefficient_r2(r2));
@@ -1838,21 +1842,21 @@ static int monitor_cpu_load(
 				cpus_used, cpus_used > 1 ? "s" : "", max_cpus);
 			show_trend(NULL, cpus_used, values_load, n,
 				"% CPU load", "1% CPU load",
-				"cpu-load", "one-percent-cpu-load-power-watts");
+				"cpu-load", "one-percent-cpu-load-watts", true);
 			printf("\n");
 			show_trend(NULL, cpus_used, values_ops, n,
 				"bogo op", "1 bogo op",
-				"bogo-op", "one-bogo-op-power-watts");
+				"bogo-op", "one-bogo-op-power-watt-seconds", false);
 
 #if defined(PERF_ENABLED)
 			printf("\n");
 			show_trend(NULL, cpus_used, values_cpu_cycles, n,
 				"CPU cycle", "1 CPU cycle",
-				"cpu-cycle", "one-cpu-cycle-power-watts");
+				"cpu-cycle", "one-cpu-cycle-watt-seconds", false);
 			printf("\n");
 			show_trend(NULL, cpus_used, values_cpu_instr, n,
 				"CPU instruction", "1 CPU instruction",
-				"cpu-instruction", "on-cpu-instruction-power-watts");
+				"cpu-instruction", "on-cpu-instruction-watt-seconds", false);
 #endif
 		}
 	} else {
@@ -1860,20 +1864,20 @@ static int monitor_cpu_load(
 			cpu_list->count, cpu_list->count > 1 ? "s" : "", max_cpus);
 		show_trend(fp, CPU_ANY, values_load, n,
 			"% CPU load", "1% CPU load",
-			"cpu-load", "one-percent-cpu-load-power-watts");
+			"cpu-load", "one-percent-cpu-load-watts", true);
 		printf("\n");
 		show_trend(fp, CPU_ANY, values_ops, n,
 			"bogo op", "1 bogo op",
-			"bogo-op", "one-bogo-op-power-watts");
+			"bogo-op", "one-bogo-op-watts-seconds", false);
 #if defined(PERF_ENABLED)
 		printf("\n");
 		show_trend(fp, CPU_ANY, values_cpu_cycles, n,
 			"CPU cycle", "1 CPU cycle",
-			"cpu-cycle", "one-cpu-cycle-power-watts");
+			"cpu-cycle", "one-cpu-cycle-watt-seconds", false);
 		printf("\n");
 		show_trend(fp, CPU_ANY, values_cpu_instr, n,
 			"CPU instruction", "1 CPU instruction",
-			"cpu-instruction", "on-cpu-instruction-power-watts");
+			"cpu-instruction", "on-cpu-instruction-watt-seconds", false);
 #endif
 	}
 	return 0;
