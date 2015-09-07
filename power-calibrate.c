@@ -1998,7 +1998,8 @@ int main(int argc, char * const argv[])
 	memset(&cpu_list, 0, sizeof(cpu_list));
 
 	max_cpus = num_cpus = sysconf(_SC_NPROCESSORS_CONF);
-	if (num_cpus < 0) {
+	if (num_cpus < 1) {
+		/* Zero CPUs makes no sense, -ve is an error */
 		fprintf(stderr, "Cannot determine number of CPUs, errno=%d (%s).\n",
 			errno, strerror(errno));
 		goto out;
