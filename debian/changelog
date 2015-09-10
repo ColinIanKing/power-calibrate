@@ -1,3 +1,13 @@
+power-calibrate (0.01.20-1) unstable; urgency=medium
+
+  * Clear pids after each round so perf failures don't occur (LP:#1494226)
+  * Makefile: bump version
+  * Handle NaN values for R^2 gracefully
+  * Only update stats if perf counter is valid
+  * Add SI scale 'atto' prefix
+
+ -- Colin King <colin.king@canonical.com>  Thu, 10 Sep 2015 11:58:00 +0100
+
 power-calibrate (0.01.19-1) unstable; urgency=medium
 
   * debian/control: update Build-Depends to version 9 or above
