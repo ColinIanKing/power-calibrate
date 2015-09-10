@@ -237,7 +237,7 @@ static char *units_to_str(
 {
 	double v = (double)val;
 	size_t i;
-	static const char *scales[] = { "", "m", "µ", "n", "p", "f", NULL };
+	static const char *scales[] = { "", "m", "µ", "n", "p", "f", "a", NULL };
 
 	for (i = 0; i < 6; i++, v *= 1000) {
 		if (v > 0.5)
