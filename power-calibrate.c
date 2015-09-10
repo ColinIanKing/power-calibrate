@@ -712,9 +712,11 @@ static bool stats_gather(
 			double value;
 
 			perf_counter(&c->perf, PERF_HW_CPU_CYCLES, &value);
-			res->value[CPU_CYCLES] += value;
+			if (value > 0.0)
+				res->value[CPU_CYCLES] += value;
 			perf_counter(&c->perf, PERF_HW_INSTRUCTIONS, &value);
-			res->value[CPU_INSTRUCTIONS] += value;
+			if (value > 0.0)
+				res->value[CPU_INSTRUCTIONS] += value;
 		}
 	}
 #else
