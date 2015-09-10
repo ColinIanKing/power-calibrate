@@ -448,6 +448,7 @@ static void stop_load(cpu_list_t *cpu_list, const int total_procs)
 
 			waitpid(c->pid, &status, 0);
 		}
+		c->pid = -1;
 	}
 }
 
@@ -476,7 +477,7 @@ static void start_load(
 		(void)siginterrupt(signals[i], 1);
 	}
 
-	for (c = cpu_list->head, i= 0;
+	for (c = cpu_list->head, i = 0;
 		c && i < total_procs; c = c->next, i++) {
 		c->pid = fork();
 

@@ -72,6 +72,9 @@ int perf_start(perf_t *p, const pid_t pid)
 		p->perf_stat[i].counter = 0;
 	}
 
+	if (pid <= 0)
+		return 0;
+
 	for (i = 0; i < PERF_MAX; i++) {
 		struct perf_event_attr attr;
 
@@ -86,6 +89,9 @@ int perf_start(perf_t *p, const pid_t pid)
 		p->perf_stat[i].fd = syscall(__NR_perf_event_open, &attr, pid, -1, -1, 0);
 		if (p->perf_stat[i].fd > -1)
 			p->perf_opened++;
+		else {
+			fprintf(stderr, "perf fail: %d %s\n", errno, strerror(errno));
+		}
 	}
 	if (!p->perf_opened) {
 		munmap(p, sizeof(perf_t));
@@ -136,7 +142,8 @@ int perf_stop(perf_t *p)
 
 	for (i = 0; i < PERF_MAX; i++) {
 		int fd = p->perf_stat[i].fd;
-		if (fd < 0 ) {
+
+		if (fd < 0) {
 			p->perf_stat[i].counter = PERF_INVALID;
 			continue;
 		}
@@ -152,7 +159,7 @@ int perf_stop(perf_t *p)
 				if (data.time_running == 0) {
 					scale = (data.time_enabled == 0) ? 1.0 : 0.0;
 				} else {
-					scale = (double)data.time_enabled / data.time_running;
+					scale = (double)data.time_enabled / (double)data.time_running;
 				}
 				p->perf_stat[i].counter = (uint64_t)((double)data.counter * scale);
 			}
@@ -180,8 +187,13 @@ void perf_counter(
 	int i;
 
 	for (i = 0; i < PERF_MAX; i++) {
-		if (perf_info[i].id == id)
-			*counter = (double)p->perf_stat[i].counter;
+		if (perf_info[i].id == id) {
+			if (p->perf_stat[i].counter == PERF_INVALID) {
+				*counter = 0;
+			} else {
+				*counter = (double)p->perf_stat[i].counter;
+			}
+		}
 	}
 }
 #endif
