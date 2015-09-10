@@ -1528,6 +1528,7 @@ tidy_exit:
  *	coefficient of determination.
  */
 static int calc_trend(
+	const char *heading,
 	const int cpus_used,
 	const value_t *values,
 	const int num_values,
@@ -1540,6 +1541,7 @@ static int calc_trend(
 	double sum_x = 0.0, sum_y = 0.0;
 	double sum_x2 = 0.0, sum_y2 = 0.0;
 	double sum_xy = 0.0, r;
+	double n1, n2;
 
 	for (i = 0; i < num_values; i++) {
 		if (cpus_used == CPU_ANY || cpus_used >= values[i].cpus_used) {
@@ -1554,7 +1556,7 @@ static int calc_trend(
 	}
 
 	if (!n) {
-		printf("Cannot perform trend analysis, zero samples.\n");
+		printf("%s: Cannot perform trend analysis, zero samples.\n", heading);
 		return -1;
 	}
 
@@ -1562,9 +1564,15 @@ static int calc_trend(
 	 * Coefficient of determination R^2,
 	 * http://mathbits.com/MathBits/TISection/Statistics2/correlation.htm
 	 */
-	r  = (((double)n * sum_xy) - (sum_x * sum_y)) /
-	      (sqrt(((double)n * sum_x2) - (sum_x * sum_x)) *
-	       sqrt(((double)n * sum_y2) - (sum_y * sum_y)));
+	n1 = sqrt(((double)n * sum_x2) - (sum_x * sum_x));
+	n2 = sqrt(((double)n * sum_y2) - (sum_y * sum_y));
+	d = n1 * n2;
+	if (d <= 0.0) {
+		printf("%s: Cannot perform trend analysis\n"
+			"(the coefficient of determination is not invalid).\n", heading);
+		return -1;
+	}
+	r  = (((double)n * sum_xy) - (sum_x * sum_y)) / d;
 	*r2 = r * r;
 
 	/*
@@ -1723,7 +1731,7 @@ static void show_trend(
 	double average_voltage =
 		calc_average_voltage(cpus_used, values, num_values);
 
-	if (calc_trend(cpus_used, values, num_values, &gradient, &intercept, &r2) < 0)
+	if (calc_trend(heading, cpus_used, values, num_values, &gradient, &intercept, &r2) < 0)
 		return;
 
 	units_to_str(gradient, "W", watts, sizeof(watts));
