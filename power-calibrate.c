@@ -2148,7 +2148,7 @@ out:
 		free_cpu_info(&cpu_list);
 
 #if defined(RAPL_X86)
-		rapl_free_list(rapl_list);
+	rapl_free_list(rapl_list);
 #endif
 
 	exit(ret);
