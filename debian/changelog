@@ -1,3 +1,11 @@
+power-calibrate (0.01.21-1) unstable; urgency=medium
+
+  * Makefile: bump version
+  * Fix indentation, as spotted by gcc-6
+  * Update and correct copyright years
+
+ -- Colin King <colin.king@canonical.com>  Wed, 13 Jan 2016 17:53:23 +0000
+
 power-calibrate (0.01.20-1) unstable; urgency=medium
 
   * Clear pids after each round so perf failures don't occur (LP:#1494226)
