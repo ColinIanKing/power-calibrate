@@ -142,9 +142,7 @@ typedef struct cpu_info {
 	struct cpu_info *next;
 	int		cpu_id;	/* CPU number, 0 = first CPU */
 	pid_t		pid;
-#if defined(PERF_ENABLED)
 	perf_t		perf;
-#endif
 } cpu_info_t;
 
 /* CPU list */
@@ -171,6 +169,7 @@ typedef void (*func)(
 static volatile bool stop_flag;			/* sighandler stop flag */
 static int32_t opt_flags;			/* command options */
 static char *app_name = "power-calibrate";	/* application name */
+static bool perf_enabled = false;		/* true if we can access perf */
 
 /*
  *  Attempt to catch a range of signals so
@@ -224,6 +223,34 @@ static const int signals[] = {
 #endif
 	-1,
 };
+
+/*
+ *  perf_possible()
+ *	check if perf can be run
+ */
+static bool perf_possible(void)
+{
+#if defined(PERF_ENABLED)
+	static char *path = "/proc/sys/kernel/perf_event_paranoid";
+	FILE *fp;
+	int level;
+
+	if (geteuid() == 0)
+		return true;
+
+	if ((fp = fopen(path, "r")) == NULL)
+		return false;
+	if (fscanf(fp, "%5d", &level) < 1) {
+		(void)fclose(fp);
+		return false;
+	}
+	(void)fclose(fp);
+
+	return (level < 2);
+#else
+	return false;
+#endif
+}
 
 /*
  *  units_to_str()
@@ -704,8 +731,7 @@ static bool stats_gather(
 	res->value[CPU_INSTRUCTIONS]  = 0.0;
 	res->inaccurate[CPU_INSTRUCTIONS] = false;
 
-#if defined(PERF_ENABLED)
-	{
+	if (perf_enabled) {
 		cpu_info_t *c;
 
 		for (c = cpu_list->head; c; c = c->next) {
@@ -719,9 +745,6 @@ static bool stats_gather(
 				res->value[CPU_INSTRUCTIONS] += value;
 		}
 	}
-#else
-	(void)cpu_list;
-#endif
 
 	for (i = 0; (j = indices[i]) != -1; i++)
 		inaccurate |= (s1->inaccurate[j] | s2->inaccurate[j]);
@@ -764,11 +787,13 @@ static bool stats_gather(
  */
 static void stats_headings(const char *test)
 {
-	printf("%10.10s  User   Sys  Idle  Run  Ctxt/s  IRQ/s  Ops/s "
-#if defined(PERF_ENABLED)
-		"Cycl/s Inst/s "
-#endif
-		" Watts\n", test);
+	if (perf_enabled) {
+		printf("%10.10s  User   Sys  Idle  Run  Ctxt/s  IRQ/s  Ops/s "
+			"Cycl/s Inst/s Watts\n", test);
+	} else {
+		printf("%10.10s  User   Sys  Idle  Run  Ctxt/s  IRQ/s  Ops/s "
+			" Watts\n", test);
+	}
 }
 
 /*
@@ -781,9 +806,7 @@ static void stats_print(
 	const stats_t *const s)
 {
 	char buf[10], bogo_ops[10];
-#if defined(PERF_ENABLED)
 	char cpu_cycles[10], cpu_instr[10];
-#endif
 	char *fmt;
 
 	if (summary) {
@@ -798,31 +821,32 @@ static void stats_print(
 
 	value_to_str(s->value[BOGO_OPS], s->inaccurate[BOGO_OPS],
 		bogo_ops, sizeof(bogo_ops));
-#if defined(PERF_ENABLED)
-	value_to_str(s->value[CPU_CYCLES], s->inaccurate[CPU_CYCLES],
-		cpu_cycles, sizeof(cpu_cycles));
-	value_to_str(s->value[CPU_INSTRUCTIONS], s->inaccurate[CPU_INSTRUCTIONS],
-		cpu_instr, sizeof(cpu_instr));
-#endif
+	if (perf_enabled) {
+		value_to_str(s->value[CPU_CYCLES], s->inaccurate[CPU_CYCLES],
+			cpu_cycles, sizeof(cpu_cycles));
+		value_to_str(s->value[CPU_INSTRUCTIONS], s->inaccurate[CPU_INSTRUCTIONS],
+			cpu_instr, sizeof(cpu_instr));
+	}
 
-	fmt = summary ?
-#if defined(PERF_ENABLED)
-		"%10.10s %5.1f %5.1f %5.1f %4.1f %7.1f %6.1f %6s %6s %6s %s\n" :
-		"%10.10s %5.1f %5.1f %5.1f %4.0f %7.0f %6.0f %6s %6s %6s %s\n";
-#else
-		"%10.10s %5.1f %5.1f %5.1f %4.1f %7.1f %6.1f %6s %s\n" :
-		"%10.10s %5.1f %5.1f %5.1f %4.0f %7.0f %6.0f %6s %s\n";
-#endif
-	printf(fmt,
-		prefix,
-		s->value[CPU_USER], s->value[CPU_SYS], s->value[CPU_IDLE],
-		s->value[CPU_PROCS_RUN], s->value[CPU_CTXT],
-		s->value[CPU_INTR],
-		bogo_ops,
-#if defined(PERF_ENABLED)
-		cpu_cycles, cpu_instr,
-#endif
-		buf);
+	if (perf_enabled) {
+		fmt = summary ?
+			"%10.10s %5.1f %5.1f %5.1f %4.1f %7.1f %6.1f %6s %6s %6s %s\n" :
+			"%10.10s %5.1f %5.1f %5.1f %4.0f %7.0f %6.0f %6s %6s %6s %s\n";
+		printf(fmt,
+			prefix,
+			s->value[CPU_USER], s->value[CPU_SYS], s->value[CPU_IDLE],
+			s->value[CPU_PROCS_RUN], s->value[CPU_CTXT],
+			s->value[CPU_INTR], bogo_ops, cpu_cycles, cpu_instr, buf);
+	} else {
+		fmt = summary ?
+			"%10.10s %5.1f %5.1f %5.1f %4.1f %7.1f %6.1f %6s %s\n" :
+			"%10.10s %5.1f %5.1f %5.1f %4.0f %7.0f %6.0f %6s %s\n";
+		printf(fmt,
+			prefix,
+			s->value[CPU_USER], s->value[CPU_SYS], s->value[CPU_IDLE],
+			s->value[CPU_PROCS_RUN], s->value[CPU_CTXT],
+			s->value[CPU_INTR], bogo_ops, buf);
+	}
 }
 
 /*
@@ -1419,18 +1443,17 @@ static inline int monitor(
 		int ret = 0;
 		double secs, time_now;
 		struct timeval tv;
-#if defined(PERF_ENABLED)
 		cpu_info_t *c;
-#endif
 
 		if ((time_now = gettime_to_double()) < 0.0) {
 			free(stats);
 			return -1;
 		}
-#if defined(PERF_ENABLED)
-		for (c = cpu_list->head; c; c = c->next)
-			perf_start(&c->perf, c->pid);
-#endif
+
+		if (perf_enabled) {
+			for (c = cpu_list->head; c; c = c->next)
+				perf_start(&c->perf, c->pid);
+		}
 
 		if (opt_flags & OPT_PROGRESS) {
 			double progress = readings * 100.0 / max_readings;
@@ -1445,11 +1468,10 @@ static inline int monitor(
 			goto sample_now;
 		tv = double_to_timeval(secs);
 		ret = select(0, NULL, NULL, NULL, &tv);
-		if (ret < 0) {
-#if defined(PERF_ENABLED)
+		if ((ret < 0) && (perf_enabled)) {
 			for (c = cpu_list->head; c; c = c->next)
 				perf_stop(&c->perf);
-#endif
+
 			if (errno == EINTR)
 				break;
 			fprintf(stderr,"select failed: errno=%d (%s).\n",
@@ -1465,10 +1487,10 @@ sample_now:
 			char tmbuffer[10];
 			bool discharging;
 
-#if defined(PERF_ENABLED)
-			for (c = cpu_list->head; c; c = c->next)
-				perf_stop(&c->perf);
-#endif
+			if (perf_enabled) {
+				for (c = cpu_list->head; c; c = c->next)
+					perf_stop(&c->perf);
+			}
 
 			get_time(tmbuffer, sizeof(tmbuffer));
 			if (stats_read(num_cpus, &s2, bogo_ops) < 0)
@@ -1851,16 +1873,16 @@ static int monitor_cpu_load(
 				"bogo op", "1 bogo op",
 				"bogo-op", "one-bogo-op-power-watt-seconds", false);
 
-#if defined(PERF_ENABLED)
-			printf("\n");
-			show_trend(NULL, cpus_used, values_cpu_cycles, n,
-				"CPU cycle", "1 CPU cycle",
-				"cpu-cycle", "one-cpu-cycle-watt-seconds", false);
-			printf("\n");
-			show_trend(NULL, cpus_used, values_cpu_instr, n,
-				"CPU instruction", "1 CPU instruction",
-				"cpu-instruction", "on-cpu-instruction-watt-seconds", false);
-#endif
+			if (perf_enabled) {
+				printf("\n");
+				show_trend(NULL, cpus_used, values_cpu_cycles, n,
+					"CPU cycle", "1 CPU cycle",
+					"cpu-cycle", "one-cpu-cycle-watt-seconds", false);
+				printf("\n");
+				show_trend(NULL, cpus_used, values_cpu_instr, n,
+					"CPU instruction", "1 CPU instruction",
+					"cpu-instruction", "on-cpu-instruction-watt-seconds", false);
+			}
 		}
 	} else {
 		printf("\nFor %d CPU%s (of a %d CPU system):\n",
@@ -1872,16 +1894,16 @@ static int monitor_cpu_load(
 		show_trend(fp, CPU_ANY, values_ops, n,
 			"bogo op", "1 bogo op",
 			"bogo-op", "one-bogo-op-watts-seconds", false);
-#if defined(PERF_ENABLED)
-		printf("\n");
-		show_trend(fp, CPU_ANY, values_cpu_cycles, n,
-			"CPU cycle", "1 CPU cycle",
-			"cpu-cycle", "one-cpu-cycle-watt-seconds", false);
-		printf("\n");
-		show_trend(fp, CPU_ANY, values_cpu_instr, n,
-			"CPU instruction", "1 CPU instruction",
-			"cpu-instruction", "on-cpu-instruction-watt-seconds", false);
-#endif
+		if (perf_enabled) {
+			printf("\n");
+			show_trend(fp, CPU_ANY, values_cpu_cycles, n,
+				"CPU cycle", "1 CPU cycle",
+				"cpu-cycle", "one-cpu-cycle-watt-seconds", false);
+			printf("\n");
+			show_trend(fp, CPU_ANY, values_cpu_instr, n,
+				"CPU instruction", "1 CPU instruction",
+				"cpu-instruction", "on-cpu-instruction-watt-seconds", false);
+		}
 	}
 	return 0;
 }
@@ -2075,6 +2097,7 @@ int main(int argc, char * const argv[])
 	if ((opt_flags & (OPT_RAPL | OPT_DELAY)) == OPT_RAPL)
 		start_delay = START_DELAY_RAPL;
 
+	perf_enabled = perf_possible();
 	populate_cpu_info(num_cpus, &cpu_list);
 
 #if defined(RAPL_X86)

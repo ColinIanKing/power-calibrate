@@ -26,8 +26,6 @@
 
 #include "perf.h"
 
-#if defined(PERF_ENABLED)
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -196,4 +194,3 @@ void perf_counter(
 		}
 	}
 }
-#endif
