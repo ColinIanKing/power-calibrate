@@ -1,3 +1,12 @@
+power-calibrate (0.01.22-1) unstable; urgency=medium
+
+  * Makefile: bump version
+  * debian/control: update Standards-Version to 3.9.8
+  * Update man page to mention perf mode restrictions
+  * perf: detect when perf counters can't be used (LP: #1627516)
+
+ -- Colin King <colin.king@canonical.com>  Sun, 25 Sep 2016 09:05:53 +0100
+
 power-calibrate (0.01.21-1) unstable; urgency=medium
 
   * Makefile: bump version
