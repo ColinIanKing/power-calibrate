@@ -1400,11 +1400,13 @@ static inline int monitor(
 	int readings = 0, i;
 	int64_t t = 1;
 	stats_t *stats, s1, s2, average, stddev;
-	bool discharging, dummy_inaccurate;
+	bool dummy_inaccurate;
 	double time_start;
 
 	if (start_delay > 0) {
 		stats_t dummy;
+		bool discharging;
+
 		/* Gather up initial data */
 		for (i = 0; i < start_delay; i++) {
 			if (opt_flags & OPT_PROGRESS) {
