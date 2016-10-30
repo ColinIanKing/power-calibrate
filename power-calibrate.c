@@ -103,12 +103,16 @@
 #define SYS_CLASS_POWER_SUPPLY	"/sys/class/power_supply"
 #define PROC_ACPI_BATTERY	"/proc/acpi/battery"
 
+#define FLOAT_TINY		(0.0000001)
+#define FLOAT_CMP(a, b)		(fabs(a - b) < FLOAT_TINY)
+
 #define SYS_FIELD_VOLTAGE_NOW		"POWER_SUPPLY_VOLTAGE_NOW="
 #define SYS_FIELD_POWER_NOW		"POWER_SUPPLY_POWER_NOW="
 #define SYS_FIELD_ENERGY_NOW		"POWER_SUPPLY_ENERGY_NOW="
 #define SYS_FIELD_CURRENT_NOW		"POWER_SUPPLY_CURRENT_NOW="
 #define SYS_FIELD_CHARGE_NOW		"POWER_SUPPLY_CHARGE_NOW="
 #define SYS_FIELD_STATUS_DISCHARGING  	"POWER_SUPPLY_STATUS=Discharging"
+
 
 #if defined(__x86_64__) || defined(__x86_64) || \
     defined(__i386__) || defined(__i386)
@@ -1093,7 +1097,7 @@ static int power_get_proc_acpi(
 		 * 'present voltage' field and instead returns this in
 		 * the design_voltage field, so work around this.
 		 */
-		if (voltage == 0.0) {
+		if (FLOAT_CMP(voltage, 0.0)) {
 			sprintf(filename, "/proc/acpi/battery/%s/info",
 				dirent->d_name);
 			if ((file = fopen(filename, "r")) != NULL) {
@@ -1727,7 +1731,7 @@ static double calc_average_voltage(
 	}
 	average = (n == 0) ? 0.0 : average / n;
 
-	if (average == 0.0)
+	if (FLOAT_CMP(average, 0.0))
 		return -1;
 
 	return average;
