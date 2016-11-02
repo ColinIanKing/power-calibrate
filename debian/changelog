@@ -1,3 +1,12 @@
+power-calibrate (0.01.23-1) unstable; urgency=medium
+
+  * Makefile: bump version
+  * Move scope of variable discharging
+  * Allow float comparisons some slop
+  * Makefile: add PEDANTIC flags
+
+ -- Colin King <colin.king@canonical.com>  Wed, 2 Nov 2016 13:27:21 -0600
+
 power-calibrate (0.01.22-1) unstable; urgency=medium
 
   * Makefile: bump version
