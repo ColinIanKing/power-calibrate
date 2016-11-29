@@ -1577,7 +1577,7 @@ static int calc_trend(
 			sum_x += values[i].x;
 			sum_y += values[i].y;
 			sum_xy += (values[i].x * values[i].y);
-				sum_x2 += (values[i].x * values[i].x);
+			sum_x2 += (values[i].x * values[i].x);
 			sum_y2 += (values[i].y * values[i].y);
 			n++;
 		}
