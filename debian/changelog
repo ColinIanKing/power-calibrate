@@ -1,3 +1,12 @@
+power-calibrate (0.01.24-1) unstable; urgency=medium
+
+  * Makefile: bump version
+  * Manual: update copyright year and manual date
+  * Update copyright year
+  * Fix inconsistent indenting
+
+ -- Colin King <colin.king@canonical.com>  Sat, 15 Apr 2017 16:40:11 +0100
+
 power-calibrate (0.01.23-1) unstable; urgency=medium
 
   * Makefile: bump version
