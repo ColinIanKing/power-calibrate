@@ -735,6 +735,7 @@ static bool stats_gather(
 	res->value[CPU_INSTRUCTIONS]  = 0.0;
 	res->inaccurate[CPU_INSTRUCTIONS] = false;
 
+#if defined(PERF_ENABLED)
 	if (perf_enabled) {
 		cpu_info_t *c;
 
@@ -749,6 +750,9 @@ static bool stats_gather(
 				res->value[CPU_INSTRUCTIONS] += value;
 		}
 	}
+#else
+	(void)cpu_list;
+#endif
 
 	for (i = 0; (j = indices[i]) != -1; i++)
 		inaccurate |= (s1->inaccurate[j] | s2->inaccurate[j]);
@@ -791,10 +795,13 @@ static bool stats_gather(
  */
 static void stats_headings(const char *test)
 {
+#if defined(PERF_ENABLED)
 	if (perf_enabled) {
 		printf("%10.10s  User   Sys  Idle  Run  Ctxt/s  IRQ/s  Ops/s "
 			"Cycl/s Inst/s Watts\n", test);
-	} else {
+	} else
+#endif
+	{
 		printf("%10.10s  User   Sys  Idle  Run  Ctxt/s  IRQ/s  Ops/s "
 			" Watts\n", test);
 	}
@@ -1449,17 +1456,21 @@ static inline int monitor(
 		int ret = 0;
 		double secs, time_now;
 		struct timeval tv;
+#if defined(PERF_ENABLED)
 		cpu_info_t *c;
+#endif
 
 		if ((time_now = gettime_to_double()) < 0.0) {
 			free(stats);
 			return -1;
 		}
 
+#if defined(PERF_ENABLED)
 		if (perf_enabled) {
 			for (c = cpu_list->head; c; c = c->next)
 				perf_start(&c->perf, c->pid);
 		}
+#endif
 
 		if (opt_flags & OPT_PROGRESS) {
 			double progress = readings * 100.0 / max_readings;
@@ -1474,6 +1485,7 @@ static inline int monitor(
 			goto sample_now;
 		tv = double_to_timeval(secs);
 		ret = select(0, NULL, NULL, NULL, &tv);
+#if defined(PERF_ENABLED)
 		if ((ret < 0) && (perf_enabled)) {
 			for (c = cpu_list->head; c; c = c->next)
 				perf_stop(&c->perf);
@@ -1485,6 +1497,7 @@ static inline int monitor(
 			free(stats);
 			return -1;
 		}
+#endif
 sample_now:
 		if (stop_flag)
 			break;
@@ -1493,10 +1506,12 @@ sample_now:
 			char tmbuffer[10];
 			bool discharging;
 
+#if defined(PERF_ENABLED)
 			if (perf_enabled) {
 				for (c = cpu_list->head; c; c = c->next)
 					perf_stop(&c->perf);
 			}
+#endif
 
 			get_time(tmbuffer, sizeof(tmbuffer));
 			if (stats_read(num_cpus, &s2, bogo_ops) < 0)
