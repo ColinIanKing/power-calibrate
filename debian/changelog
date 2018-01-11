@@ -1,3 +1,12 @@
+power-calibrate (0.01.25-1) unstable; urgency=medium
+
+  * Makefile: bump version
+  * debian/control: uopdate Standards-Version to 4.1.2
+  * Fix build issue with perf-less ia64 arch
+  * Update copyright year
+
+ -- Colin King <colin.king@canonical.com>  Thu, 11 Jan 2018 10:16:49 +0000
+
 power-calibrate (0.01.24-1) unstable; urgency=medium
 
   * Makefile: bump version
@@ -269,6 +278,6 @@ power-calibrate (0.01.01) trusty; urgency=low
 
 power-calibrate (0.01.00) trusty; urgency=low
 
-  * Initial version 
+  * Initial version
 
  -- Colin King <colin.king@canonical.com>  Tue, 8 Apr 2014 10:51:00 +0100
