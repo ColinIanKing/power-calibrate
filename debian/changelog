@@ -1,3 +1,15 @@
+power-calibrate (0.01.26-1) unstable; urgency=medium
+
+  * Makefile: bump version
+  * voidify unused function returns
+  * constify path
+  * debian/copyright: use secure URI
+  * debian/control: update debhelper to >= 11
+  * debian/control: remove trailing empty line
+  * debian/compat: update to 11
+
+ -- Colin King <colin.king@canonical.com>  Sun, 17 Jun 2018 13:34:42 +0100
+
 power-calibrate (0.01.25-1) unstable; urgency=medium
 
   * Makefile: bump version
