@@ -14,4 +14,3 @@ Description: processor power calibration tool
  has a battery power source or of an modern Intel device has RAPL support.
  It will attempt to calculate the power usage of 1% of CPU utilisation
  (and 1 instruction and 1 cpu cycle if perf is available).
-
