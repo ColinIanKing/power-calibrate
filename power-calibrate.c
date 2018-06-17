@@ -235,7 +235,7 @@ static const int signals[] = {
 static bool perf_possible(void)
 {
 #if defined(PERF_ENABLED)
-	static char *path = "/proc/sys/kernel/perf_event_paranoid";
+	static const char *path = "/proc/sys/kernel/perf_event_paranoid";
 	FILE *fp;
 	int level;
 
