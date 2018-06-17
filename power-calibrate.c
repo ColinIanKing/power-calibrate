@@ -274,7 +274,7 @@ static char *units_to_str(
 		if (v > 0.5)
 			break;
 	}
-	snprintf(buf, buflen, "%.2f %s%s", v, scales[i], units);
+	(void)snprintf(buf, buflen, "%.2f %s%s", v, scales[i], units);
 	return buf;
 }
 /*
@@ -288,7 +288,7 @@ static char *value_to_str(
 	const size_t buflen)
 {
 	if (inaccurate) {
-		snprintf(buf, buflen, "-N/A-");
+		(void)snprintf(buf, buflen, "-N/A-");
 	} else {
 		double v = (double)val;
 		size_t i;
@@ -298,7 +298,7 @@ static char *value_to_str(
 			if (v <= 500)
 				break;
 		}
-		snprintf(buf, buflen, "%5.1f%c", v, scales[i]);
+		(void)snprintf(buf, buflen, "%5.1f%c", v, scales[i]);
 	}
 	return buf;
 }
@@ -335,7 +335,7 @@ static double gettime_to_double(void)
 	struct timeval tv;
 
         if (gettimeofday(&tv, NULL) < 0) {
-                fprintf(stderr, "gettimeofday failed: errno=%d (%s).\n",
+                (void)fprintf(stderr, "gettimeofday failed: errno=%d (%s).\n",
                         errno, strerror(errno));
 		return -1.0;
         }
@@ -379,7 +379,7 @@ static int set_affinity(const int cpu)
 	CPU_SET(cpu, &mask);
 	ret = sched_setaffinity(0, sizeof(mask), &mask);
 	if (ret < 0) {
-		fprintf(stderr, "sched_setffinity failed: errno=%d (%s).\n",
+		(void)fprintf(stderr, "sched_setffinity failed: errno=%d (%s).\n",
 			errno, strerror(errno));
 		return -1;
 	}
@@ -406,7 +406,7 @@ static void stress_cpu(
 				/* Stop optimising out */
 				__asm__ __volatile__("");
 #endif
-				mwc();
+				(void)mwc();
 				if (stop_flag) {
 					bogo_ops[instance].ops += i;
 					exit(EXIT_SUCCESS);
@@ -419,7 +419,7 @@ static void stress_cpu(
 
 	if (cpu_load == 0) {
 		for (;;) {
-			sleep(DEFAULT_TIMEOUT);
+			(void)sleep(DEFAULT_TIMEOUT);
 			if (stop_flag)
 				exit(EXIT_SUCCESS);
 		}
@@ -442,7 +442,7 @@ static void stress_cpu(
 			/* Stop optimising out */
 			__asm__ __volatile__("");
 #endif
-			mwc();
+			(void)mwc();
 			if (stop_flag) {
 				bogo_ops[instance].ops += i;
 				exit(EXIT_SUCCESS);
@@ -453,7 +453,7 @@ static void stress_cpu(
 		/* Must not calculate this with zero % load */
 		delay *= (((100.0 / (double) cpu_load)) - 1.0);
 		tv = double_to_timeval(delay);
-		select(0, NULL, NULL, NULL, &tv);
+		(void)select(0, NULL, NULL, NULL, &tv);
 	}
 	exit(EXIT_SUCCESS);
 }
@@ -470,14 +470,14 @@ static void stop_load(cpu_list_t *cpu_list, const int total_procs)
 	/* Kill.. */
 	for (c = cpu_list->head, i = 0; c && i < total_procs; c = c->next, i++) {
 		if (c->pid > -1)
-			kill(c->pid, SIGKILL);
+			(void)kill(c->pid, SIGKILL);
 	}
 	/* And ensure we don't get zombies */
 	for (c = cpu_list->head, i = 0; c && i < total_procs; c = c->next, i++) {
 		if (c->pid > -1) {
 			int status;
 
-			waitpid(c->pid, &status, 0);
+			(void)waitpid(c->pid, &status, 0);
 		}
 		c->pid = -1;
 	}
@@ -501,7 +501,7 @@ static void start_load(
 	memset(&new_action, 0, sizeof(new_action));
 	for (i = 0; signals[i] != -1; i++) {
 		new_action.sa_handler = handle_sig;
-		sigemptyset(&new_action.sa_mask);
+		(void)sigemptyset(&new_action.sa_mask);
 		new_action.sa_flags = 0;
 
 		(void)sigaction(signals[i], &new_action, NULL);
@@ -514,7 +514,7 @@ static void start_load(
 
 		switch (c->pid) {
 		case -1:
-			fprintf(stderr, "Cannot fork, errno=%d (%s)\n",
+			(void)fprintf(stderr, "Cannot fork, errno=%d (%s)\n",
 				errno, strerror(errno));
 			stop_load(cpu_list, i);
 			exit(EXIT_FAILURE);
@@ -562,10 +562,10 @@ static void get_time(char *const buffer, const size_t buflen)
 
 	now = time(NULL);
 	if (now == ((time_t) -1)) {
-		snprintf(buffer, buflen, "--:--:-- ");
+		(void)snprintf(buffer, buflen, "--:--:-- ");
 	} else {
 		(void)localtime_r(&now, &tm);
-		snprintf(buffer, buflen, "%2.2d:%2.2d:%2.2d ",
+		(void)snprintf(buffer, buflen, "%2.2d:%2.2d:%2.2d ",
 			tm.tm_hour, tm.tm_min, tm.tm_sec);
 	}
 }
@@ -610,7 +610,7 @@ static int stats_read(
 	char buf[4096];
 	int i, j;
 
-	static int indices[] = {
+	static const int indices[] = {
 		CPU_USER, CPU_NICE, CPU_SYS, CPU_IDLE,
 		CPU_IOWAIT, CPU_IRQ, CPU_SOFTIRQ, CPU_CTXT,
 		CPU_INTR, CPU_PROCS_RUN, CPU_PROCS_BLK, -1
@@ -622,7 +622,7 @@ static int stats_read(
 	}
 
 	if ((fp = fopen("/proc/stat", "r")) == NULL) {
-		fprintf(stderr, "Cannot read /proc/stat, errno=%d (%s).\n",
+		(void)fprintf(stderr, "Cannot read /proc/stat, errno=%d (%s).\n",
 			errno, strerror(errno));
 		return -1;
 	}
@@ -714,7 +714,7 @@ static bool stats_gather(
 	int i, j;
 	bool inaccurate = false;
 
-	static int indices[] = {
+	static const int indices[] = {
 		CPU_USER, CPU_NICE, CPU_SYS, CPU_IDLE,
 		CPU_IOWAIT, -1
 	};
@@ -797,12 +797,12 @@ static void stats_headings(const char *test)
 {
 #if defined(PERF_ENABLED)
 	if (perf_enabled) {
-		printf("%10.10s  User   Sys  Idle  Run  Ctxt/s  IRQ/s  Ops/s "
+		(void)printf("%10.10s  User   Sys  Idle  Run  Ctxt/s  IRQ/s  Ops/s "
 			"Cycl/s Inst/s Watts\n", test);
 	} else
 #endif
 	{
-		printf("%10.10s  User   Sys  Idle  Run  Ctxt/s  IRQ/s  Ops/s "
+		(void)printf("%10.10s  User   Sys  Idle  Run  Ctxt/s  IRQ/s  Ops/s "
 			" Watts\n", test);
 	}
 }
@@ -822,11 +822,11 @@ static void stats_print(
 
 	if (summary) {
 		if (s->inaccurate[POWER_NOW])
-			snprintf(buf, sizeof(buf), "-N/A-");
+			(void)snprintf(buf, sizeof(buf), "-N/A-");
 		else
-			snprintf(buf, sizeof(buf), "%6.3f", s->value[POWER_NOW]);
+			(void)snprintf(buf, sizeof(buf), "%6.3f", s->value[POWER_NOW]);
 	} else {
-		snprintf(buf, sizeof(buf), "%6.3f%s", s->value[POWER_NOW],
+		(void)snprintf(buf, sizeof(buf), "%6.3f%s", s->value[POWER_NOW],
 			s->inaccurate[POWER_NOW] ? "E" : "");
 	}
 
@@ -843,7 +843,7 @@ static void stats_print(
 		fmt = summary ?
 			"%10.10s %5.1f %5.1f %5.1f %4.1f %7.1f %6.1f %6s %6s %6s %s\n" :
 			"%10.10s %5.1f %5.1f %5.1f %4.0f %7.0f %6.0f %6s %6s %6s %s\n";
-		printf(fmt,
+		(void)printf(fmt,
 			prefix,
 			s->value[CPU_USER], s->value[CPU_SYS], s->value[CPU_IDLE],
 			s->value[CPU_PROCS_RUN], s->value[CPU_CTXT],
@@ -852,7 +852,7 @@ static void stats_print(
 		fmt = summary ?
 			"%10.10s %5.1f %5.1f %5.1f %4.1f %7.1f %6.1f %6s %s\n" :
 			"%10.10s %5.1f %5.1f %5.1f %4.0f %7.0f %6.0f %6s %s\n";
-		printf(fmt,
+		(void)printf(fmt,
 			prefix,
 			s->value[CPU_USER], s->value[CPU_SYS], s->value[CPU_IDLE],
 			s->value[CPU_PROCS_RUN], s->value[CPU_CTXT],
@@ -927,7 +927,7 @@ static int power_get_sys_fs(
 	*inaccurate = true;
 
 	if ((dir = opendir(SYS_CLASS_POWER_SUPPLY)) == NULL) {
-		fprintf(stderr, "Machine does not have %s, cannot run the test.\n",
+		(void)fprintf(stderr, "Machine does not have %s, cannot run the test.\n",
 			SYS_CLASS_POWER_SUPPLY);
 		return -1;
 	}
@@ -941,7 +941,7 @@ static int power_get_sys_fs(
 			FILE *fp;
 
 			/* Check that type field matches the expected type */
-			snprintf(path, sizeof(path), "%s/%s/type",
+			(void)snprintf(path, sizeof(path), "%s/%s/type",
 				SYS_CLASS_POWER_SUPPLY, dirent->d_name);
 			if ((data = file_get(path)) != NULL) {
 				bool mismatch = (strstr(data, "Battery") == NULL);
@@ -954,7 +954,7 @@ static int power_get_sys_fs(
 			snprintf(path, sizeof(path), "%s/%s/uevent",
 				SYS_CLASS_POWER_SUPPLY, dirent->d_name);
 			if ((fp = fopen(path, "r")) == NULL) {
-				fprintf(stderr, "Battery %s present but under supported - "
+				(void)fprintf(stderr, "Battery %s present but under supported - "
 					"no state present.", dirent->d_name);
 				(void)closedir(dir);
 				return -1;
@@ -998,9 +998,9 @@ static int power_get_sys_fs(
 
 #if DETECT_DISCHARGING
 	if (! *discharging) {
-		printf("Machine is not discharging, cannot measure power usage.\n");
+		(void)printf("Machine is not discharging, cannot measure power usage.\n");
 #if defined(RAPL_X86)
-		printf("Alternatively, use the RAPL power measuring option '-R'.\n");
+		(void)printf("Alternatively, use the RAPL power measuring option '-R'.\n");
 #endif
 		return -1;
 	}
@@ -1026,7 +1026,7 @@ static int power_get_sys_fs(
 	 *  calculate it from delta in charge, but that is not accurate
 	 *  for this kind of use case, so error out instead.
 	 */
-	fprintf(stderr, "The battery just provided charge data which is not accurate enough.\n");
+	(void)fprintf(stderr, "The battery just provided charge data which is not accurate enough.\n");
 	return -1;
 }
 
@@ -1054,7 +1054,7 @@ static int power_get_proc_acpi(
 	*inaccurate = true;
 
 	if ((dir = opendir(PROC_ACPI_BATTERY)) == NULL) {
-		fprintf(stderr, "Machine does not have %s, cannot run the test.\n",
+		(void)fprintf(stderr, "Machine does not have %s, cannot run the test.\n",
 			PROC_ACPI_BATTERY);
 		return -1;
 	}
@@ -1069,11 +1069,11 @@ static int power_get_proc_acpi(
 		if (strlen(dirent->d_name) < 3)
 			continue;
 
-		sprintf(filename, "/proc/acpi/battery/%s/state", dirent->d_name);
+		(void)sprintf(filename, "/proc/acpi/battery/%s/state", dirent->d_name);
 		if ((file = fopen(filename, "r")) == NULL)
 			continue;
 
-		memset(buffer, 0, sizeof(buffer));
+		(void)memset(buffer, 0, sizeof(buffer));
 		while (fgets(buffer, sizeof(buffer), file) != NULL) {
 			if (strstr(buffer, "present:") &&
 			    strstr(buffer, "no"))
@@ -1157,7 +1157,7 @@ static int power_get_proc_acpi(
 	 *  calculate it from delta in charge, but that is not accurate
 	 *  for this kind of use case, so error out instead.
 	 */
-	fprintf(stderr, "The battery just provided charge data which is not accurate enough.\n");
+	(void)fprintf(stderr, "The battery just provided charge data which is not accurate enough.\n");
 	return -1;
 }
 
@@ -1216,7 +1216,7 @@ static int rapl_get_domains(rapl_info_t **rapl_list)
 			free(rapl);
 			return -1;
 		}
-		snprintf(path, sizeof(path),
+		(void)snprintf(path, sizeof(path),
 			"/sys/class/powercap/%s/max_energy_range_uj",
 			entry->d_name);
 
@@ -1226,7 +1226,7 @@ static int rapl_get_domains(rapl_info_t **rapl_list)
 				rapl->max_energy_uj = 0.0;
 			(void)fclose(fp);
 		}
-		snprintf(path, sizeof(path),
+		(void)snprintf(path, sizeof(path),
 			"/sys/class/powercap/%s/name",
 			entry->d_name);
 
@@ -1254,7 +1254,7 @@ static int rapl_get_domains(rapl_info_t **rapl_list)
 	(void)closedir(dir);
 
 	if (!n)
-		printf("Device does not have any RAPL domains, cannot power measure power usage.\n");
+		(void)printf("Device does not have any RAPL domains, cannot power measure power usage.\n");
 	return n;
 }
 
@@ -1284,7 +1284,7 @@ static int power_get_rapl(
 		FILE *fp;
 		double ujoules;
 
-		snprintf(path, sizeof(path),
+		(void)snprintf(path, sizeof(path),
 			"/sys/class/powercap/%s/energy_uj",
 			rapl->name);
 
@@ -1318,7 +1318,7 @@ static int power_get_rapl(
 			n++;
 			*discharging = true;
 		}
-		fclose(fp);
+		(void)fclose(fp);
 	}
 
 	if (first) {
@@ -1327,7 +1327,7 @@ static int power_get_rapl(
 	}
 
 	if (!n) {
-		printf("Device does not have any RAPL domains, cannot power measure power usage.\n");
+		(void)printf("Device does not have any RAPL domains, cannot power measure power usage.\n");
 		return -1;
 	}
 	return 0;
@@ -1366,7 +1366,7 @@ static int power_get(
 	    S_ISDIR(buf.st_mode))
 		return power_get_proc_acpi(stats, discharging, inaccurate);
 
-	fprintf(stderr, "Machine does not seem to have a battery, cannot measure power.\n");
+	(void)fprintf(stderr, "Machine does not seem to have a battery, cannot measure power.\n");
 	return -1;
 }
 
@@ -1417,9 +1417,9 @@ static inline int monitor(
 		/* Gather up initial data */
 		for (i = 0; i < start_delay; i++) {
 			if (opt_flags & OPT_PROGRESS) {
-				fprintf(stdout, "%10.10s: test warming up %5.1f%%..\r",
+				(void)fprintf(stdout, "%10.10s: test warming up %5.1f%%..\r",
 					test, 100.0 * i / start_delay);
-				fflush(stdout);
+				(void)fflush(stdout);
 			}
 			if (power_get(rapl_list, &dummy, &discharging, &dummy_inaccurate) < 0)
 				return -1;
@@ -1434,7 +1434,7 @@ static inline int monitor(
 		return -1;
 
 	if ((stats = calloc(max_readings, sizeof(stats_t))) == NULL) {
-		fprintf(stderr, "Cannot allocate statistics table.\n");
+		(void)fprintf(stderr, "Cannot allocate statistics table.\n");
 		return -1;
 	}
 
@@ -1474,10 +1474,10 @@ static inline int monitor(
 
 		if (opt_flags & OPT_PROGRESS) {
 			double progress = readings * 100.0 / max_readings;
-			fprintf(stdout, "%10.10s: test progress %5.1f%% (total progress %6.2f%%)\r",
+			(void)fprintf(stdout, "%10.10s: test progress %5.1f%% (total progress %6.2f%%)\r",
 				test, progress,
 				(progress * percent_each / 100.0) + percent);
-			fflush(stdout);
+			(void)fflush(stdout);
 		}
 
 		secs = time_start + ((double)t * sample_delay) - time_now;
@@ -1492,7 +1492,7 @@ static inline int monitor(
 
 			if (errno == EINTR)
 				break;
-			fprintf(stderr,"select failed: errno=%d (%s).\n",
+			(void)fprintf(stderr,"select failed: errno=%d (%s).\n",
 				errno, strerror(errno));
 			free(stats);
 			return -1;
@@ -1599,7 +1599,7 @@ static int calc_trend(
 	}
 
 	if (!n) {
-		printf("%s: Cannot perform trend analysis, zero samples.\n", heading);
+		(void)printf("%s: Cannot perform trend analysis, zero samples.\n", heading);
 		return -1;
 	}
 
@@ -1611,7 +1611,7 @@ static int calc_trend(
 	n2 = sqrt(((double)n * sum_y2) - (sum_y * sum_y));
 	d = n1 * n2;
 	if (d <= 0.0) {
-		printf("%s: Cannot perform trend analysis\n"
+		(void)printf("%s: Cannot perform trend analysis\n"
 			"(the coefficient of determination is not invalid).\n", heading);
 		return -1;
 	}
@@ -1642,19 +1642,19 @@ static int calc_trend(
  */
 static void show_help(char *const argv[])
 {
-	printf("%s, version %s\n\n", app_name, VERSION);
-	printf("usage: %s [options]\n", argv[0]);
-	printf(" -d secs  specify delay before starting\n");
-	printf(" -h show  help\n");
-	printf(" -n cpus  specify number of CPUs to exercise\n");
-	printf(" -o file  output results into YAML formatted file\n");
-	printf(" -p       show progress\n");
-	printf(" -r secs  specify run duration in seconds of each test cycle\n");
+	(void)printf("%s, version %s\n\n", app_name, VERSION);
+	(void)printf("usage: %s [options]\n", argv[0]);
+	(void)printf(" -d secs  specify delay before starting\n");
+	(void)printf(" -h show  help\n");
+	(void)printf(" -n cpus  specify number of CPUs to exercise\n");
+	(void)printf(" -o file  output results into YAML formatted file\n");
+	(void)printf(" -p       show progress\n");
+	(void)printf(" -r secs  specify run duration in seconds of each test cycle\n");
 #if defined(RAPL_X86)
-	printf(" -R       use Intel RAPL per CPU package data to measure Watts\n");
+	(void)printf(" -R       use Intel RAPL per CPU package data to measure Watts\n");
 #endif
-	printf(" -s num   number of samples (tests) per CPU for CPU calibration\n");
-	printf("\nExample: power-calibrate  -R -r 20 -d 5 -s 21 -n 0 -p\n");
+	(void)printf(" -s num   number of samples (tests) per CPU for CPU calibration\n");
+	(void)printf("\nExample: power-calibrate  -R -r 20 -d 5 -s 21 -n 0 -p\n");
 }
 
 /*
@@ -1692,9 +1692,9 @@ static void dump_yaml_values(
 	if (!yaml)
 		return;
 
-	fprintf(yaml, "  %s:\n", heading);
-	fprintf(yaml, "    %s: %e\n", field, value);
-	fprintf(yaml, "    r-squared: %f\n", r2);
+	(void)fprintf(yaml, "  %s:\n", heading);
+	(void)fprintf(yaml, "    %s: %e\n", field, value);
+	(void)fprintf(yaml, "    r-squared: %f\n", r2);
 }
 
 /*
@@ -1709,23 +1709,23 @@ static void dump_yaml_misc(FILE *yaml)
 
 	now = time(NULL);
 	if (now == ((time_t) -1)) {
-		memset(&tm, 0, sizeof(tm));
+		(void)memset(&tm, 0, sizeof(tm));
 	} else {
 		localtime_r(&now, &tm);
 	}
 
-	memset(&buf, 0, sizeof(struct utsname));
-	uname(&buf);
+	(void)memset(&buf, 0, sizeof(struct utsname));
+	(void)uname(&buf);
 
-	fprintf(yaml, "  test-run:\n");
-	fprintf(yaml, "    date: %2.2d/%2.2d/%-2.2d\n",
+	(void)fprintf(yaml, "  test-run:\n");
+	(void)fprintf(yaml, "    date: %2.2d/%2.2d/%-2.2d\n",
 		tm.tm_mday, tm.tm_mon + 1, (tm.tm_year+1900) % 100);
-	fprintf(yaml, "    time: %-2.2d:%-2.2d:%-2.2d\n",
+	(void)fprintf(yaml, "    time: %-2.2d:%-2.2d:%-2.2d\n",
 		tm.tm_hour, tm.tm_min, tm.tm_sec);
-	fprintf(yaml, "    sysname: %s\n", buf.sysname);
-	fprintf(yaml, "    nodename: %s\n", buf.nodename);
-	fprintf(yaml, "    release: %s\n", buf.release);
-	fprintf(yaml, "    machine: %s\n", buf.machine);
+	(void)fprintf(yaml, "    sysname: %s\n", buf.sysname);
+	(void)fprintf(yaml, "    nodename: %s\n", buf.nodename);
+	(void)fprintf(yaml, "    release: %s\n", buf.release);
+	(void)fprintf(yaml, "    machine: %s\n", buf.machine);
 }
 
 /*
@@ -1779,7 +1779,7 @@ static void show_trend(
 
 	units_to_str(gradient, "W", watts, sizeof(watts));
 
-	printf("  %s (%s) = (%s * %e) + %f\n",
+	(void)printf("  %s (%s) = (%s * %e) + %f\n",
 		power ? "Power" : "Energy",
 		power ? "Watts" : "Watt-seconds",
 		unit, gradient, intercept);
@@ -1790,10 +1790,10 @@ static void show_trend(
 		printf("  %s is about %s (about %s @ %s)\n",
 			each, watts, amps, volts);
 	} else {
-		printf("  %s is about %s%s\n", each, watts,
+		(void)printf("  %s is about %s%s\n", each, watts,
 			power ? "" : "s");
 	}
-	printf("  Coefficient of determination R^2 = %f (%s)\n",
+	(void)printf("  Coefficient of determination R^2 = %f (%s)\n",
 		r2, coefficient_r2(r2));
 
 	dump_yaml_values(yaml, heading, field, gradient, r2);
@@ -1834,7 +1834,7 @@ static int monitor_cpu_load(
 			double percent_each = 100.0 / (samples_cpu * num_cpus);
 			double percent = n * percent_each;
 
-			snprintf(buffer, sizeof(buffer), "%d%% x %d",
+			(void)snprintf(buffer, sizeof(buffer), "%d%% x %d",
 				cpu_load, n_cpus);
 			start_load(cpu_list, n_cpus, stress_cpu,
 				(uint64_t)cpu_load, bogo_ops);
@@ -1884,43 +1884,43 @@ static int monitor_cpu_load(
 		int cpus_used = 0;
 
 		for (c = cpu_list->head, cpus_used = 1; c; c = c->next, cpus_used++) {
-			printf("\nFor %d CPU%s (of a %d CPU system):\n",
+			(void)printf("\nFor %d CPU%s (of a %d CPU system):\n",
 				cpus_used, cpus_used > 1 ? "s" : "", max_cpus);
 			show_trend(NULL, cpus_used, values_load, n,
 				"% CPU load", "1% CPU load",
 				"cpu-load", "one-percent-cpu-load-watts", true);
-			printf("\n");
+			(void)printf("\n");
 			show_trend(NULL, cpus_used, values_ops, n,
 				"bogo op", "1 bogo op",
 				"bogo-op", "one-bogo-op-power-watt-seconds", false);
 
 			if (perf_enabled) {
-				printf("\n");
+				(void)printf("\n");
 				show_trend(NULL, cpus_used, values_cpu_cycles, n,
 					"CPU cycle", "1 CPU cycle",
 					"cpu-cycle", "one-cpu-cycle-watt-seconds", false);
-				printf("\n");
+				(void)printf("\n");
 				show_trend(NULL, cpus_used, values_cpu_instr, n,
 					"CPU instruction", "1 CPU instruction",
 					"cpu-instruction", "on-cpu-instruction-watt-seconds", false);
 			}
 		}
 	} else {
-		printf("\nFor %d CPU%s (of a %d CPU system):\n",
+		(void)printf("\nFor %d CPU%s (of a %d CPU system):\n",
 			cpu_list->count, cpu_list->count > 1 ? "s" : "", max_cpus);
 		show_trend(fp, CPU_ANY, values_load, n,
 			"% CPU load", "1% CPU load",
 			"cpu-load", "one-percent-cpu-load-watts", true);
-		printf("\n");
+		(void)printf("\n");
 		show_trend(fp, CPU_ANY, values_ops, n,
 			"bogo op", "1 bogo op",
 			"bogo-op", "one-bogo-op-watts-seconds", false);
 		if (perf_enabled) {
-			printf("\n");
+			(void)printf("\n");
 			show_trend(fp, CPU_ANY, values_cpu_cycles, n,
 				"CPU cycle", "1 CPU cycle",
 				"cpu-cycle", "one-cpu-cycle-watt-seconds", false);
-			printf("\n");
+			(void)printf("\n");
 			show_trend(fp, CPU_ANY, values_cpu_instr, n,
 				"CPU instruction", "1 CPU instruction",
 				"cpu-instruction", "on-cpu-instruction-watt-seconds", false);
@@ -1939,7 +1939,7 @@ static int add_cpu_info(cpu_list_t *cpu_list, const int cpu)
 
 	c = calloc(1, sizeof(cpu_info_t));
 	if (!c) {
-		fprintf(stderr, "Out of memory allocating CPU  info.\n");
+		(void)fprintf(stderr, "Out of memory allocating CPU  info.\n");
 		return -1;
 	}
 	if (cpu_list->head)
@@ -1975,11 +1975,11 @@ static int parse_cpu_info(
 		errno = 0;
 		cpu = strtol(token, &endptr, 10);
 		if (errno || endptr == token) {
-			fprintf(stderr, "Invalid CPU specified.\n");
+			(void)fprintf(stderr, "Invalid CPU specified.\n");
 			return -1;
 		}
 		if (cpu < 0 || cpu > max_cpus - 1) {
-			fprintf(stderr, "CPU number out of range.\n");
+			(void)fprintf(stderr, "CPU number out of range.\n");
 			return -1;
 		}
 		if (add_cpu_info(cpu_list, cpu) < 0)
@@ -1987,7 +1987,7 @@ static int parse_cpu_info(
 		n++;
 	}
 	if (!cpu_list->head) {
-		fprintf(stderr, "No valid CPU numbers given.\n");
+		(void)fprintf(stderr, "No valid CPU numbers given.\n");
 		return -1;
 	}
 
@@ -2049,12 +2049,12 @@ int main(int argc, char * const argv[])
 	int32_t num_cpus;			/* number of CPUs */
 	int32_t max_cpus;			/* number of CPUs in system */
 
-	memset(&cpu_list, 0, sizeof(cpu_list));
+	(void)memset(&cpu_list, 0, sizeof(cpu_list));
 
 	max_cpus = num_cpus = sysconf(_SC_NPROCESSORS_CONF);
 	if (num_cpus < 1) {
 		/* Zero CPUs makes no sense, -ve is an error */
-		fprintf(stderr, "Cannot determine number of CPUs, errno=%d (%s).\n",
+		(void)fprintf(stderr, "Cannot determine number of CPUs, errno=%d (%s).\n",
 			errno, strerror(errno));
 		goto out;
 	}
@@ -2068,7 +2068,7 @@ int main(int argc, char * const argv[])
 			opt_flags |= OPT_DELAY;
 			start_delay = atoi(optarg);
 			if (start_delay < 0) {
-				fprintf(stderr, "Start delay must be 0 or more seconds.\n");
+				(void)fprintf(stderr, "Start delay must be 0 or more seconds.\n");
 				goto out;
 			}
 			break;
@@ -2091,7 +2091,7 @@ int main(int argc, char * const argv[])
 		case 'r':
 			opt_run_duration = atoi(optarg);
 			if (opt_run_duration < MIN_RUN_DURATION) {
-				fprintf(stderr, "Minimum run duration must be %d seconds or more\n",
+				(void)fprintf(stderr, "Minimum run duration must be %d seconds or more\n",
 					MIN_RUN_DURATION);
 				goto out;
 			}
@@ -2105,7 +2105,7 @@ int main(int argc, char * const argv[])
 			samples_cpu = atoi(optarg);
 			if ((samples_cpu < 3.0) ||
 			    (samples_cpu > MAX_CPU_LOAD)) {
-				fprintf(stderr, "Samples for CPU measurements out of range.\n");
+				(void)fprintf(stderr, "Samples for CPU measurements out of range.\n");
 				goto out;
 			}
 			break;
@@ -2129,29 +2129,29 @@ int main(int argc, char * const argv[])
 	if (optind < argc) {
 		sample_delay = atoi(argv[optind++]);
 		if (sample_delay < 1) {
-			fprintf(stderr, "Sample delay must be >= 1.\n");
+			(void)fprintf(stderr, "Sample delay must be >= 1.\n");
 			goto out;
 		}
 	}
 
 	if (filename) {
 		if ((yaml = fopen(filename, "w")) == NULL) {
-			fprintf(stderr, "Cannot open json output file '%s', "
+			(void)fprintf(stderr, "Cannot open json output file '%s', "
 				"errno=%d (%s).\n",
 				filename, errno, strerror(errno));
 			goto out;
 		}
-		fprintf(yaml, "---\n%s:\n", app_name);
+		(void)fprintf(yaml, "---\n%s:\n", app_name);
 	}
 
-	memset(&new_action, 0, sizeof(new_action));
+	(void)memset(&new_action, 0, sizeof(new_action));
 	for (i = 0; signals[i] != -1; i++) {
 		new_action.sa_handler = handle_sig;
-		sigemptyset(&new_action.sa_mask);
+		(void)sigemptyset(&new_action.sa_mask);
 		new_action.sa_flags = 0;
 
 		if (sigaction(signals[i], &new_action, NULL) < 0) {
-			fprintf(stderr, "sigaction failed: errno=%d (%s).\n",
+			(void)fprintf(stderr, "sigaction failed: errno=%d (%s).\n",
 				errno, strerror(errno));
 			goto out;
 		}
@@ -2164,7 +2164,7 @@ int main(int argc, char * const argv[])
 	bogo_ops = mmap(NULL, sizeof(bogo_ops_t) * num_cpus,
 		PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANON, -1, 0);
 	if (bogo_ops == MAP_FAILED) {
-		fprintf(stderr, "mmap failed: errno=%d (%s).\n",
+		(void)fprintf(stderr, "mmap failed: errno=%d (%s).\n",
 			errno, strerror(errno));
 		goto out;
 	}
@@ -2183,7 +2183,7 @@ out:
 	if (yaml) {
 		dump_yaml_misc(yaml);
 
-		fprintf(yaml, "...\n");
+		(void)fprintf(yaml, "...\n");
 		(void)fclose(yaml);
 		if (ret != EXIT_SUCCESS)
 			unlink(filename);
