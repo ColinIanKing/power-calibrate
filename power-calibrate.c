@@ -1831,7 +1831,7 @@ static int monitor_cpu_load(
 			double percent_each = 100.0 / (samples_cpu * num_cpus);
 			double percent = n * percent_each;
 
-			(void)snprintf(buffer, sizeof(buffer), "%d%% x %d",
+			(void)snprintf(buffer, sizeof(buffer), "%d%% x %u",
 				cpu_load, n_cpus);
 			start_load(cpu_list, n_cpus, stress_cpu,
 				(uint64_t)cpu_load, bogo_ops);
@@ -1903,7 +1903,7 @@ static int monitor_cpu_load(
 			}
 		}
 	} else {
-		(void)printf("\nFor %d CPU%s (of a %d CPU system):\n",
+		(void)printf("\nFor %u CPU%s (of a %d CPU system):\n",
 			cpu_list->count, cpu_list->count > 1 ? "s" : "", max_cpus);
 		show_trend(fp, CPU_ANY, values_load, n,
 			"% CPU load", "1% CPU load",
