@@ -1872,7 +1872,7 @@ static int monitor_cpu_load(
 		}
 	}
 	/* Keep static analysis happy */
-	if (n <= 0) {
+	if (n == 0) {
 		printf("\nZero samples, cannot compute statistics.\n");
 		return -1;
 	}
