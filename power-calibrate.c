@@ -817,7 +817,6 @@ static void stats_print(
 	const stats_t *const s)
 {
 	char buf[10], bogo_ops[10];
-	char cpu_cycles[10], cpu_instr[10];
 	char *fmt;
 
 	if (summary) {
@@ -833,6 +832,8 @@ static void stats_print(
 	value_to_str(s->value[BOGO_OPS], s->inaccurate[BOGO_OPS],
 		bogo_ops, sizeof(bogo_ops));
 	if (perf_enabled) {
+		char cpu_cycles[10], cpu_instr[10];
+
 		value_to_str(s->value[CPU_CYCLES], s->inaccurate[CPU_CYCLES],
 			cpu_cycles, sizeof(cpu_cycles));
 		value_to_str(s->value[CPU_INSTRUCTIONS], s->inaccurate[CPU_INSTRUCTIONS],
