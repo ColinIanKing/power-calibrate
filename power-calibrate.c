@@ -837,9 +837,6 @@ static void stats_print(
 			cpu_cycles, sizeof(cpu_cycles));
 		value_to_str(s->value[CPU_INSTRUCTIONS], s->inaccurate[CPU_INSTRUCTIONS],
 			cpu_instr, sizeof(cpu_instr));
-	}
-
-	if (perf_enabled) {
 		fmt = summary ?
 			"%10.10s %5.1f %5.1f %5.1f %4.1f %7.1f %6.1f %6s %6s %6s %s\n" :
 			"%10.10s %5.1f %5.1f %5.1f %4.0f %7.0f %6.0f %6s %6s %6s %s\n";
