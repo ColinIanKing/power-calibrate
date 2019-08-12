@@ -1,3 +1,10 @@
+power-calibrate (0.01.28-1) unstable; urgency=medium
+
+  * Makefile: bump version
+  * Debian: Update to compat level 12
+
+ -- Colin King <colin.king@canonical.com>  Mon, 12 Aug 2019 19:11:12 +0100
+
 power-calibrate (0.01.27-1) unstable; urgency=medium
 
   * Makefile: bump version
