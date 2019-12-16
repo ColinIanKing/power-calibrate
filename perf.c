@@ -132,7 +132,6 @@ int perf_stop(perf_t *p)
 	size_t i = 0;
 	perf_data_t data;
 	ssize_t ret;
-	int rc = -1;
 	double scale;
 
 	if (!p)
@@ -168,11 +167,10 @@ int perf_stop(perf_t *p)
 		p->perf_stat[i].fd = -1;
 	}
 out_ok:
-	rc = 0;
 	for (; i < PERF_MAX; i++)
 		p->perf_stat[i].counter = PERF_INVALID;
 
-	return rc;
+	return 0;
 }
 
 /*
