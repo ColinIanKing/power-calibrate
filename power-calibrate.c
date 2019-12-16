@@ -963,25 +963,30 @@ static int power_get_sys_fs(
 				double watts_rate = 0.0;
 
 				while (fgets(buffer, sizeof(buffer)-1, fp) != NULL) {
+					int rc;
+
 					if (strstr(buffer, SYS_FIELD_STATUS_DISCHARGING))
 						*discharging = true;
 
 					if (strstr(buffer, SYS_FIELD_CURRENT_NOW) &&
 					    strlen(buffer) > sizeof(SYS_FIELD_CURRENT_NOW) - 1) {
-						sscanf(buffer + sizeof(SYS_FIELD_CURRENT_NOW) - 1, "%12d", &val);
-						amps_rate = (double)val / 1000000.0;
+						rc = sscanf(buffer + sizeof(SYS_FIELD_CURRENT_NOW) - 1, "%12d", &val);
+						if (rc == 1)
+							amps_rate = (double)val / 1000000.0;
 					}
 
 					if (strstr(buffer, SYS_FIELD_POWER_NOW) &&
 					    strlen(buffer) > sizeof(SYS_FIELD_POWER_NOW) - 1) {
-						sscanf(buffer + sizeof(SYS_FIELD_POWER_NOW) - 1, "%12d", &val);
-						watts_rate = (double)val / 1000000.0;
+						rc = sscanf(buffer + sizeof(SYS_FIELD_POWER_NOW) - 1, "%12d", &val);
+						if (rc == 1)
+							watts_rate = (double)val / 1000000.0;
 					}
 
 					if (strstr(buffer, SYS_FIELD_VOLTAGE_NOW) &&
 					    strlen(buffer) > sizeof(SYS_FIELD_VOLTAGE_NOW) - 1) {
-						sscanf(buffer + sizeof(SYS_FIELD_VOLTAGE_NOW) - 1, "%12d", &val);
-						voltage = (double)val / 1000000.0;
+						rc = sscanf(buffer + sizeof(SYS_FIELD_VOLTAGE_NOW) - 1, "%12d", &val);
+						if (rc == 1)
+							voltage = (double)val / 1000000.0;
 					}
 				}
 				average_voltage += voltage;
