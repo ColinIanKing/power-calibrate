@@ -1,3 +1,11 @@
+power-calibrate (0.01.30-1) unstable; urgency=medium
+
+  * Makefile: bump version
+  * Add bash completion script
+  * Update copyright to 2020
+
+ -- Colin King <colin.king@canonical.com>  Wed, 26 Feb 2020 17:11:31 +0000
+
 power-calibrate (0.01.29-1) unstable; urgency=medium
 
   * Makefile: bump version
