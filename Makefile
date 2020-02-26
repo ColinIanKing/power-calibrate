@@ -16,7 +16,7 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 #
 
-VERSION=0.01.29
+VERSION=0.01.30
 
 CFLAGS += -Wall -Wextra -DVERSION='"$(VERSION)"' -O2 -g
 
@@ -32,6 +32,7 @@ endif
 
 BINDIR=/usr/sbin
 MANDIR=/usr/share/man/man8
+BASHDIR=/usr/share/bash-completion/completions
 
 SRC = power-calibrate.c perf.c
 OBJS = $(SRC:.c=.o)
@@ -52,7 +53,8 @@ dist:
 	rm -rf power-calibrate-$(VERSION)
 	mkdir power-calibrate-$(VERSION)
 	cp -rp Makefile scripts power-calibrate.c power-calibrate.8 \
-		perf.c perf.h COPYING .travis.yml power-calibrate-$(VERSION)
+		perf.c perf.h COPYING .travis.yml bash-completion \
+		power-calibrate-$(VERSION)
 	tar -zcf power-calibrate-$(VERSION).tar.gz power-calibrate-$(VERSION)
 	rm -rf power-calibrate-$(VERSION)
 
@@ -65,3 +67,5 @@ install: power-calibrate power-calibrate.8.gz
 	cp power-calibrate ${DESTDIR}${BINDIR}
 	mkdir -p ${DESTDIR}${MANDIR}
 	cp power-calibrate.8.gz ${DESTDIR}${MANDIR}
+	mkdir -p ${DESTDIR}${BASHDIR}
+	cp bash-completion/power-calibrate ${DESTDIR}${BASHDIR}
