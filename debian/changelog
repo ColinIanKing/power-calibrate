@@ -1,3 +1,11 @@
+power-calibrate (0.01.31-1) unstable; urgency=medium
+
+  * Makefile: bump version
+  * Debian/control: update compat to 13, remove compat file,
+    add Rules-Requires-Root rule
+
+ -- Colin King <colin.king@canonical.com>  Sat, 4 Jul 2020 21:20:19 +0100
+
 power-calibrate (0.01.30-1) unstable; urgency=medium
 
   * Makefile: bump version
