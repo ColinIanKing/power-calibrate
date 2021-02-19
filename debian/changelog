@@ -1,3 +1,11 @@
+power-calibrate (0.01.32-1) unstable; urgency=medium
+
+  * Makefile: bump version
+  * Remove deprecated siginterrupt call, replace with SA_RESTART flag
+  * update copyright to 2021
+
+ -- Colin King <colin.king@canonical.com>  Fri, 19 Feb 2021 11:47:59 +0100
+
 power-calibrate (0.01.31-1) unstable; urgency=medium
 
   * Makefile: bump version
