@@ -502,10 +502,9 @@ static void start_load(
 	for (i = 0; signals[i] != -1; i++) {
 		new_action.sa_handler = handle_sig;
 		(void)sigemptyset(&new_action.sa_mask);
-		new_action.sa_flags = 0;
+		new_action.sa_flags = SA_RESTART;
 
 		(void)sigaction(signals[i], &new_action, NULL);
-		(void)siginterrupt(signals[i], 1);
 	}
 
 	for (c = cpu_list->head, i = 0;
@@ -2151,14 +2150,13 @@ int main(int argc, char * const argv[])
 	for (i = 0; signals[i] != -1; i++) {
 		new_action.sa_handler = handle_sig;
 		(void)sigemptyset(&new_action.sa_mask);
-		new_action.sa_flags = 0;
+		new_action.sa_flags = SA_RESTART;
 
 		if (sigaction(signals[i], &new_action, NULL) < 0) {
 			(void)fprintf(stderr, "sigaction failed: errno=%d (%s).\n",
 				errno, strerror(errno));
 			goto out;
 		}
-		(void)siginterrupt(signals[i], 1);
 	}
 
 	run_duration = opt_run_duration;
