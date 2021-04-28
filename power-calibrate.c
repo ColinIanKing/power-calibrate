@@ -1412,6 +1412,13 @@ static inline int monitor(
 	bool dummy_inaccurate;
 	double time_start;
 
+	*busy = 0.0;
+	*power = 0.0;
+	*voltage = 0.0;
+	*ops = 0.0;
+	*cpu_cycles = 0.0;
+	*cpu_instr = 0.0;
+
 	if (start_delay > 0) {
 		stats_t dummy;
 		bool discharging;
@@ -1845,7 +1852,8 @@ static int monitor_cpu_load(
 				start_delay, sample_delay,
 				max_readings, buffer,
 				percent_each, percent, bogo_ops,
-				&value_load->x, &value_load->y,
+				&value_load->x,
+				&value_load->y,
 				&value_load->voltage,
 				&value_ops->x,
 				&value_cpu_cycles->x,
