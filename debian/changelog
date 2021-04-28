@@ -1,3 +1,10 @@
+power-calibrate (0.01.33-1) unstable; urgency=medium
+
+  * Makefile: bump version
+  * Ensure outputs args of monitor() are zero'd
+
+ -- Colin King <colin.king@canonical.com>  Wed, 28 Apr 2021 22:19:17 +0100
+
 power-calibrate (0.01.32-1) unstable; urgency=medium
 
   * Makefile: bump version
