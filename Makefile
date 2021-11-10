@@ -53,7 +53,7 @@ dist:
 	rm -rf power-calibrate-$(VERSION)
 	mkdir power-calibrate-$(VERSION)
 	cp -rp Makefile scripts power-calibrate.c power-calibrate.8 \
-		perf.c perf.h COPYING .travis.yml bash-completion \
+		perf.c perf.h COPYING .travis.yml bash-completion README.md \
 		power-calibrate-$(VERSION)
 	tar -zcf power-calibrate-$(VERSION).tar.gz power-calibrate-$(VERSION)
 	rm -rf power-calibrate-$(VERSION)
