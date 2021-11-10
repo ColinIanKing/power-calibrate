@@ -1,3 +1,15 @@
+power-calibrate (0.01.34-1) unstable; urgency=medium
+
+  * Makefile: bump version
+  * Makefile: add README.md to dist rule
+  * manual: update date, author email and copyright
+  * debian/watch: update watch path for tarball, move to version 4
+  * debian/copyright: Update copyright and git URL
+  * debian/control: update author email address and project URL
+  * Add README.md
+
+ -- Colin Ian King <colin.i.king@gmail.com>  Wed, 10 Nov 2021 18:59:23 +0000
+
 power-calibrate (0.01.33-1) unstable; urgency=medium
 
   * Makefile: bump version
