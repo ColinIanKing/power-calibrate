@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2014-2021 Canonical
- * Copyright (C) 2021-2023 Colin Ian King
+ * Copyright (C) 2021-2024 Colin Ian King
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -1195,7 +1195,7 @@ static int rapl_get_domains(rapl_info_t **rapl_list)
 
 	dir = opendir("/sys/class/powercap");
 	if (dir == NULL) {
-		printf("Device does not have RAPL, cannot measure power usage.\n");
+		printf("Cannot open /sys/class/powercap, cannot measure power usage, try running as root.\n");
 		return -1;
 	}
 
@@ -1257,7 +1257,7 @@ static int rapl_get_domains(rapl_info_t **rapl_list)
 	(void)closedir(dir);
 
 	if (!n)
-		(void)printf("Device does not have any RAPL domains, cannot power measure power usage.\n");
+		(void)printf("Cannot detect any RAPL domains, cannot power measure power usage, try running as root.\n");
 	return n;
 }
 
@@ -1330,7 +1330,7 @@ static int power_get_rapl(
 	}
 
 	if (!n) {
-		(void)printf("Device does not have any RAPL domains, cannot power measure power usage.\n");
+		(void)printf("Cannot detect any RAPL domains, cannot power measure power usage, try running as root\n");
 		return -1;
 	}
 	return 0;
