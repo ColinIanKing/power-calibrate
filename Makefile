@@ -56,12 +56,12 @@ dist:
 	cp -rp Makefile scripts power-calibrate.c power-calibrate.8 \
 		perf.c perf.h COPYING .travis.yml bash-completion README.md \
 		power-calibrate-$(VERSION)
-	tar -zcf power-calibrate-$(VERSION).tar.gz power-calibrate-$(VERSION)
+	tar -Jcf power-calibrate-$(VERSION).tar.xz power-calibrate-$(VERSION)
 	rm -rf power-calibrate-$(VERSION)
 
 clean:
 	rm -f power-calibrate $(OBJS) power-calibrate.8.gz
-	rm -f power-calibrate-$(VERSION).tar.gz
+	rm -f power-calibrate-$(VERSION).tar.xz
 
 install: power-calibrate power-calibrate.8.gz
 	mkdir -p ${DESTDIR}${BINDIR}
