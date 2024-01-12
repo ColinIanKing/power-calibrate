@@ -1,3 +1,14 @@
+power-calibrate (0.01.35-1) unstable; urgency=medium
+
+  * Makefile: bump version
+  * Update copyright for Makefile and manual
+  * debian/control: update standards version to 4.6.2
+  * Makefile: use xz compression on tarball for make dist rule
+  * debian/rules: add missing hardening rules
+  * power-calibrate: improve error messages, hint to run as root
+
+ -- Colin Ian King <colin.i.king@gmail.com>  Fri, 12 Jan 2024 11:50:29 +0000
+
 power-calibrate (0.01.34-1) unstable; urgency=medium
 
   * Makefile: bump version
