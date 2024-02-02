@@ -1809,6 +1809,19 @@ static void show_trend(
 	dump_yaml_values(yaml, heading, field, gradient, r2);
 }
 
+static void init_values(value_t *values, const size_t n)
+{
+	register size_t i;
+
+	for (i = 0; i < n; i++) {
+		values[i].x = 0.0;
+		values[i].y = 0.0;
+		values[i].voltage = 0.0;
+		values[i].cpu_id = 0;
+		values[i].cpus_used = 0;
+	}
+}
+
 /*
  *  monitor_cpu_load()
  *	load CPU(s) and gather stats
@@ -1826,11 +1839,17 @@ static int monitor_cpu_load(
 	bogo_ops_t *bogo_ops)
 {
 	uint32_t i, n = 0;
-	value_t values_load[num_cpus * samples_cpu], *value_load = values_load;
-	value_t values_ops[num_cpus * samples_cpu], *value_ops = values_ops;
-	value_t values_cpu_cycles[num_cpus * samples_cpu], *value_cpu_cycles = values_cpu_cycles;
-	value_t values_cpu_instr[num_cpus * samples_cpu], *value_cpu_instr = values_cpu_instr;
+	const size_t n_values = num_cpus * samples_cpu;
+	value_t values_load[n_values], *value_load = values_load;
+	value_t values_ops[n_values], *value_ops = values_ops;
+	value_t values_cpu_cycles[n_values], *value_cpu_cycles = values_cpu_cycles;
+	value_t values_cpu_instr[n_values], *value_cpu_instr = values_cpu_instr;
 	double scale = (double)MAX_CPU_LOAD / (samples_cpu - 1);
+
+	init_values(values_load, n_values);
+	init_values(values_ops, n_values);
+	init_values(values_cpu_cycles, n_values);
+	init_values(values_cpu_instr, n_values);
 
 	stats_headings("CPU load");
 	for (i = 0; i < (uint32_t)samples_cpu; i++) {
