@@ -1,3 +1,10 @@
+power-calibrate (0.01.36-1) unstable; urgency=medium
+
+  * Makefile: bump version
+  * add init_values to ensure all data is initialized
+
+ -- Colin Ian King <colin.i.king@gmail.com>  Fri, 2 Feb 2024 19:23:48 +0000
+
 power-calibrate (0.01.35-1) unstable; urgency=medium
 
   * Makefile: bump version
