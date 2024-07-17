@@ -1,3 +1,11 @@
+power-calibrate (0.01.37-1) unstable; urgency=medium
+
+  * debian/control: update Standards-Version to 4.7.0
+  * Makefile: bump version
+  * power-calibrate: re-work code to reduce number of exit calls
+
+ -- Colin Ian King <colin.i.king@gmail.com>  Wed, 17 Jul 2024 17:20:23 +0100
+
 power-calibrate (0.01.36-1) unstable; urgency=medium
 
   * Makefile: bump version
