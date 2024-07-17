@@ -401,7 +401,39 @@ static void stress_cpu(
 	 */
 	if (cpu_load == 100) {
 		uint64_t i;
+
 		for (;;) {
+			for (i = 0; i < 1000000; i++) {
+#if __GNUC__
+				/* Stop optimising out */
+				__asm__ __volatile__("");
+#endif
+				(void)mwc();
+				if (stop_flag) {
+					bogo_ops[instance].ops += i;
+					goto finish;
+				}
+			}
+			bogo_ops[instance].ops += i;
+		}
+	} else if (cpu_load == 0) {
+		for (;;) {
+			(void)sleep(DEFAULT_TIMEOUT);
+			if (stop_flag)
+				goto finish;
+		}
+	} else {
+		/*
+		 * More complex percentage CPU utilisation.  This is
+		 * not intended to be 100% accurate timing, it is good
+		 * enough for most purposes.
+		 */
+		for (;;) {
+			uint64_t i;
+			double time_start, delay;
+			struct timeval tv;
+
+			time_start = gettime_to_double();
 			for (i = 0; i < 1000000; i++) {
 #if __GNUC__
 				/* Stop optimising out */
@@ -414,48 +446,14 @@ static void stress_cpu(
 				}
 			}
 			bogo_ops[instance].ops += i;
+			delay = gettime_to_double() - time_start;
+			/* Must not calculate this with zero % load */
+			delay *= (((100.0 / (double) cpu_load)) - 1.0);
+			tv = double_to_timeval(delay);
+			(void)select(0, NULL, NULL, NULL, &tv);
 		}
-		exit(EXIT_SUCCESS);
 	}
-
-	if (cpu_load == 0) {
-		for (;;) {
-			(void)sleep(DEFAULT_TIMEOUT);
-			if (stop_flag)
-				exit(EXIT_SUCCESS);
-		}
-		exit(EXIT_SUCCESS);
-	}
-
-	/*
-	 * More complex percentage CPU utilisation.  This is
-	 * not intended to be 100% accurate timing, it is good
-	 * enough for most purposes.
-	 */
-	for (;;) {
-		uint64_t i;
-		double time_start, delay;
-		struct timeval tv;
-
-		time_start = gettime_to_double();
-		for (i = 0; i < 1000000; i++) {
-#if __GNUC__
-			/* Stop optimising out */
-			__asm__ __volatile__("");
-#endif
-			(void)mwc();
-			if (stop_flag) {
-				bogo_ops[instance].ops += i;
-				exit(EXIT_SUCCESS);
-			}
-		}
-		bogo_ops[instance].ops += i;
-		delay = gettime_to_double() - time_start;
-		/* Must not calculate this with zero % load */
-		delay *= (((100.0 / (double) cpu_load)) - 1.0);
-		tv = double_to_timeval(delay);
-		(void)select(0, NULL, NULL, NULL, &tv);
-	}
+finish:
 	exit(EXIT_SUCCESS);
 }
 
